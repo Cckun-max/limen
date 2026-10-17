@@ -1,0 +1,116 @@
+[
+  {
+    "mode": "default",
+    "summary": {
+      "BTC": {
+        "messages": 5,
+        "median_interval_ms": 5357.7,
+        "max_interval_ms": 5378.1,
+        "median_source_age_ms": 306.7,
+        "levels_per_side": [
+          20,
+          20
+        ],
+        "changed": 4,
+        "top7_changed": 4
+      },
+      "DOGE": {
+        "messages": 5,
+        "median_interval_ms": 5357.7,
+        "max_interval_ms": 5378.1,
+        "median_source_age_ms": 306.7,
+        "levels_per_side": [
+          20,
+          20
+        ],
+        "changed": 4,
+        "top7_changed": 4
+      }
+    },
+    "acks": [
+      {
+        "channel": "subscriptionResponse",
+        "data": {
+          "method": "subscribe",
+          "subscription": {
+            "type": "l2Book",
+            "coin": "BTC",
+            "nSigFigs": null,
+            "mantissa": null,
+            "fast": false
+          }
+        }
+      },
+      {
+        "channel": "subscriptionResponse",
+        "data": {
+          "method": "subscribe",
+          "subscription": {
+            "type": "l2Book",
+            "coin": "DOGE",
+            "nSigFigs": null,
+            "mantissa": null,
+            "fast": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "mode": "fast",
+    "summary": {
+      "BTC": {
+        "messages": 42,
+        "median_interval_ms": 531.7,
+        "max_interval_ms": 953.5,
+        "median_source_age_ms": 253.8,
+        "levels_per_side": [
+          5,
+          5
+        ],
+        "changed": 40,
+        "top7_changed": 40
+      },
+      "DOGE": {
+        "messages": 42,
+        "median_interval_ms": 531.7,
+        "max_interval_ms": 953.4,
+        "median_source_age_ms": 253.9,
+        "levels_per_side": [
+          5,
+          5
+        ],
+        "changed": 39,
+        "top7_changed": 39
+      }
+    },
+    "acks": [
+      {
+        "channel": "subscriptionResponse",
+        "data": {
+          "method": "subscribe",
+          "subscription": {
+            "type": "l2Book",
+            "coin": "BTC",
+            "nSigFigs": null,
+            "mantissa": null,
+            "fast": true
+          }
+        }
+      },
+      {
+        "channel": "subscriptionResponse",
+        "data": {
+          "method": "subscribe",
+          "subscription": {
+            "type": "l2Book",
+            "coin": "DOGE",
+            "nSigFigs": null,
+            "mantissa": null,
+            "fast": true
+          }
+        }
+      }
+    ]
+  }
+]

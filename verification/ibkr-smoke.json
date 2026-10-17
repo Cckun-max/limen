@@ -1,0 +1,39 @@
+{
+  "verified_at": "2026-10-17T03:06:03.901298+00:00",
+  "backend_tests": {
+    "passed": 75,
+    "ibkr_synthetic_tests": 14
+  },
+  "existing_orderbook_tests": {
+    "passed": 6
+  },
+  "frontend_build": "passed",
+  "dependency_check": "passed",
+  "browser": {
+    "production": "Chrome: IBKR entry, settings, missing gateway error, disconnect; existing Hyperliquid preserved",
+    "isolated_synthetic": "localhost:8766 temporary DB: stock chart, bid/ask, watchlist, AI four-timeframe input preview; no model invocation; fixture stopped"
+  },
+  "ibkr_real_connection_verified": false,
+  "ibkr_status": {
+    "connected": false,
+    "enabled": false,
+    "history_delay_minutes": 15
+  },
+  "hyperliquid": {
+    "symbol": "DOGE",
+    "transport": "live",
+    "quality_1h": "fresh"
+  },
+  "pending": [
+    "User login in TWS/IB Gateway and read-only API configuration",
+    "Real AAPL/ETF and dated ES/MES quote/history entitlements",
+    "Real exchange timestamps and session boundary verification",
+    "Longer running and reconnect verification against the official client"
+  ],
+  "limitations": [
+    "No depth, tick-by-tick tape, orders or positions",
+    "No automatic futures roll/continuous series",
+    "IBKR quote catalog updates active instruments only",
+    "Local-only deployment; no public multi-user auth"
+  ]
+}

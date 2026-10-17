@@ -1,0 +1,11 @@
+{
+  "checked_at": 1791721029914,
+  "transport": "live",
+  "errors": {},
+  "cache_preserved": true,
+  "counts": {
+    "15m": 402,
+    "1h": 401,
+    "4h": 401
+  }
+}

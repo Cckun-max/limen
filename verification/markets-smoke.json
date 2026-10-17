@@ -1,0 +1,36 @@
+{
+  "symbols": {
+    "ETH": {
+      "quote_symbol": "ETH",
+      "chart_symbol": "ETH",
+      "bars": 401,
+      "price": 2528.9,
+      "quality": "fresh",
+      "quote_stale": false
+    },
+    "DOGE": {
+      "quote_symbol": "DOGE",
+      "chart_symbol": "DOGE",
+      "bars": 401,
+      "price": 0.085089,
+      "quality": "fresh",
+      "quote_stale": false
+    }
+  },
+  "catalog": {
+    "total": 234,
+    "active": 178,
+    "stale": false,
+    "received_at": 1791819967528
+  },
+  "watchlists_after_ui_cleanup": [
+    {
+      "id": "default",
+      "name": "默认自选",
+      "created_at": 1791819301893,
+      "symbols": []
+    }
+  ],
+  "model_config_ready": false,
+  "restart_verified": true
+}

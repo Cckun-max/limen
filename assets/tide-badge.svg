@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="tide">
+  <title>tide</title>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="#071A2B"/>
+  <g fill="#00D8F5" transform="translate(-16.48 -5.56) scale(1.68)">
+    <path d="M22 52H38C58 52 61 24 84 24H110L100 42H88C68 42 65 70 42 70H22Z"/>
+    <path d="M12 85H47C67 85 70 57 93 57H112L102 75H97C77 75 74 103 51 103H12Z"/>
+  </g>
+</svg>

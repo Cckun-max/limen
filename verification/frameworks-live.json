@@ -1,0 +1,225 @@
+{
+  "date": "2026-10-17",
+  "framework_id": "25b90e78-a392-43ef-9d86-555e331ee26c",
+  "framework_versions": [
+    {
+      "name": "多周期共振 · 自定义",
+      "description": "基于预置模板，可继续修改周期、指标和检查条件。",
+      "timeframes": [
+        "15m",
+        "1h",
+        "4h",
+        "1d"
+      ],
+      "indicators": [
+        "ema20",
+        "ema60",
+        "rsi14",
+        "macd",
+        "volume"
+      ],
+      "steps": [
+        {
+          "id": "trend",
+          "title": "大周期趋势",
+          "condition": "较大周期的收盘价高于 EMA20 和 EMA60，且 EMA20 高于 EMA60。判断是否满足偏多趋势条件，同时说明偏空或冲突状态。"
+        },
+        {
+          "id": "momentum",
+          "title": "跨周期动量",
+          "condition": "至少两个周期的 MACD 柱为正且 RSI14 高于 50。说明哪些周期满足，哪些周期冲突。"
+        },
+        {
+          "id": "volume",
+          "title": "量价配合",
+          "condition": "以图表主周期为准：最近一根已确认上涨 K 线的成交量高于它之前 5 根确认 K 线的均量。列出对应依据，缺少数据时明确说明。"
+        }
+      ],
+      "output_style": "简洁中文。先列出三个检查项的状态和依据，再说明周期分歧、多空条件与失效条件。",
+      "id": "25b90e78-a392-43ef-9d86-555e331ee26c",
+      "version": 2,
+      "created_at": 1792167259467
+    },
+    {
+      "name": "多周期共振 · 自定义",
+      "description": "基于预置模板，可继续修改周期、指标和检查条件。",
+      "timeframes": [
+        "15m",
+        "1h",
+        "4h",
+        "1d"
+      ],
+      "indicators": [
+        "ema20",
+        "ema60",
+        "rsi14",
+        "macd",
+        "volume"
+      ],
+      "steps": [
+        {
+          "id": "trend",
+          "title": "大周期趋势",
+          "condition": "较大周期的收盘价高于 EMA20 和 EMA60，且 EMA20 高于 EMA60。判断是否满足偏多趋势条件，同时说明偏空或冲突状态。"
+        },
+        {
+          "id": "momentum",
+          "title": "跨周期动量",
+          "condition": "至少两个周期的 MACD 柱为正且 RSI14 高于 50。说明哪些周期满足，哪些周期冲突。"
+        },
+        {
+          "id": "volume",
+          "title": "量价配合",
+          "condition": "最近已确认上涨柱的成交量高于此前 5 根确认柱均量。按可用原始成交量比较，不编造缺失数据。"
+        }
+      ],
+      "output_style": "简洁中文，先给结论，再说明依据、分歧与失效条件。",
+      "id": "25b90e78-a392-43ef-9d86-555e331ee26c",
+      "version": 1,
+      "created_at": 1792167060870
+    }
+  ],
+  "invariants": {
+    "latest_framework_is_v2": true,
+    "both_use_v1": true,
+    "same_framework_content": true,
+    "same_snapshot_hash": true,
+    "same_snapshot": true,
+    "export_keeps_original_framework": true,
+    "key_excluded": true
+  },
+  "first": {
+    "id": "67808820-a81d-4e3a-8401-7e3ad8745b78",
+    "parent_id": null,
+    "status": "completed",
+    "error": null,
+    "created_at": 1792167111202,
+    "updated_at": 1792167162579,
+    "symbol": "DOGE",
+    "timeframe": "1h",
+    "model": "deepseek-flash",
+    "usage": {
+      "prompt_tokens": 33062,
+      "completion_tokens": 10752,
+      "total_tokens": 43814
+    },
+    "framework_version": "25b90e78-a392-43ef-9d86-555e331ee26c@1",
+    "attempts": 1,
+    "elapsed_seconds": 51.38,
+    "framework_checks": [
+      {
+        "step_id": "trend",
+        "status": "not_met",
+        "explanation": "条件要求较大周期收盘价高于 EMA20 与 EMA60 且 EMA20>EMA60。实际：1d 最新确认收盘 0.081125 低于 EMA20 0.08763、EMA60 0.08665（EMA20 仍高于 EMA60）；4h 收盘 0.080361 低于 EMA20 0.08236、EMA60 0.08532，且 EMA20<EMA60；1h 收盘 0.080361 低于 EMA20 0.08159、EMA60 0.08199，且 EMA20<EMA60。价格全部位于两条均线下方，属偏空结构，仅日线 EMA20/EMA60 之间残留多头排列，构成日线层面冲突，但不足以满足偏多趋势条件。",
+        "evidence_refs": [
+          "1d:bar:1792022400000",
+          "1d:ind:1792022400000",
+          "4h:bar:1792152000000",
+          "4h:ind:1792152000000",
+          "1h:bar:1792162800000",
+          "1h:ind:1792162800000"
+        ],
+        "title": "大周期趋势",
+        "condition": "较大周期的收盘价高于 EMA20 和 EMA60，且 EMA20 高于 EMA60。判断是否满足偏多趋势条件，同时说明偏空或冲突状态。"
+      },
+      {
+        "step_id": "momentum",
+        "status": "not_met",
+        "explanation": "条件要求至少两个周期同时满足 MACD 柱为正且 RSI14>50。最新确认值：15m 柱 -0.000160、RSI 30.0；1h 柱 -0.000135、RSI 36.5；4h 柱 +9.47e-05、RSI 37.0；1d 柱 -0.00146、RSI 37.8。仅 4h 柱为正但 RSI 低于 50，满足步数的周期数为 0，故未满足。分歧点：4h 柱微正与 1h/15m 柱转负并存，1h 柱刚从 +5.4e-06 转为负值，动量方向不统一。",
+        "evidence_refs": [
+          "15m:ind:1792165500000",
+          "1h:ind:1792162800000",
+          "1h:ind:1792159200000",
+          "4h:ind:1792152000000",
+          "1d:ind:1792022400000"
+        ],
+        "title": "跨周期动量",
+        "condition": "至少两个周期的 MACD 柱为正且 RSI14 高于 50。说明哪些周期满足，哪些周期冲突。"
+      },
+      {
+        "step_id": "volume",
+        "status": "met",
+        "explanation": "按快照主周期 1h 口径：最近已确认上涨柱 1792148400000 量 1182626，高于此前 5 根确认柱（1130687/883707/1030320/1300339/912353）均量约 1051481，满足。分歧说明：15m 最近上涨柱 1792164600000 量 333048 低于前 5 根均量约 1105954；4h 最近上涨柱 1792137600000 量 4227340 低于前 5 根均量约 20101228；1d 最近上涨柱 1791849600000 量 151209401 低于前 5 根均量约 196611599。量价配合只在 1h 成立，其余周期不成立。",
+        "evidence_refs": [
+          "1h:bar:1792148400000",
+          "1h:bar:1792144800000",
+          "1h:bar:1792141200000",
+          "1h:bar:1792137600000",
+          "1h:bar:1792134000000",
+          "1h:bar:1792130400000",
+          "15m:bar:1792164600000",
+          "4h:bar:1792137600000",
+          "1d:bar:1791849600000"
+        ],
+        "title": "量价配合",
+        "condition": "最近已确认上涨柱的成交量高于此前 5 根确认柱均量。按可用原始成交量比较，不编造缺失数据。"
+      }
+    ]
+  },
+  "followup": {
+    "id": "fb0d3b76-369c-47e7-b426-d18fac25f6ed",
+    "parent_id": "67808820-a81d-4e3a-8401-7e3ad8745b78",
+    "status": "completed",
+    "error": null,
+    "created_at": 1792167281742,
+    "updated_at": 1792167300469,
+    "symbol": "DOGE",
+    "timeframe": "1h",
+    "model": "deepseek-flash",
+    "usage": {
+      "prompt_tokens": 36106,
+      "completion_tokens": 3865,
+      "total_tokens": 39971
+    },
+    "framework_version": "25b90e78-a392-43ef-9d86-555e331ee26c@1",
+    "attempts": 1,
+    "elapsed_seconds": 18.73,
+    "framework_checks": [
+      {
+        "step_id": "trend",
+        "status": "not_met",
+        "explanation": "按原规则需较大周期收盘高于 EMA20 与 EMA60 且 EMA20>EMA60。1h 收 0.080361 低于 EMA20 0.08159、EMA60 0.08199，EMA20<EMA60；4h 收 0.080361 低于 EMA20 0.08236、EMA60 0.08532，EMA20<EMA60；1d 收 0.081125 低于 EMA20 0.08763、EMA60 0.08665，仅 EMA20>EMA60。价格全部位于两条均线下方，属偏空结构，日线均线排列残留多头属分歧，不构成满足。",
+        "evidence_refs": [
+          "1h:ind:1792162800000",
+          "4h:ind:1792152000000",
+          "1d:ind:1792022400000",
+          "1d:bar:1792022400000"
+        ],
+        "title": "大周期趋势",
+        "condition": "较大周期的收盘价高于 EMA20 和 EMA60，且 EMA20 高于 EMA60。判断是否满足偏多趋势条件，同时说明偏空或冲突状态。"
+      },
+      {
+        "step_id": "momentum",
+        "status": "not_met",
+        "explanation": "按原规则需至少两个周期同时满足 MACD 柱为正且 RSI14>50。最新确认值：15m 柱 -0.000160、RSI 30.0；1h 柱 -0.000135、RSI 36.5；4h 柱 +9.47e-05、RSI 37.0；1d 柱 -0.00146、RSI 37.8。满足项数为 0，故未满足。与量价步的差异在于：本步要求指标同周期双条件成立且跨周期数量达标，而 4h 柱微正但 RSI 低于 50、1h 柱刚从 +5.4e-06 转负，方向不一致。",
+        "evidence_refs": [
+          "15m:ind:1792165500000",
+          "1h:ind:1792162800000",
+          "1h:ind:1792159200000",
+          "4h:ind:1792152000000",
+          "1d:ind:1792022400000"
+        ],
+        "title": "跨周期动量",
+        "condition": "至少两个周期的 MACD 柱为正且 RSI14 高于 50。说明哪些周期满足，哪些周期冲突。"
+      },
+      {
+        "step_id": "volume",
+        "status": "met",
+        "explanation": "按原规则以快照主周期 1h 计：最近已确认上涨柱 1792148400000 量 1182626，高于此前5根确认柱（1130687、883707、1030320、1300339、912353）均量约 1051481，故满足。分歧：同一规则下 15m 最近上涨柱 333048 低于前5根均量约 1105954，4h 最近上涨柱 4227340 低于前5根均量约 20101228，1d 最近上涨柱 151209401 低于前5根均量约 196611599，量价配合仅 1h 成立。",
+        "evidence_refs": [
+          "1h:bar:1792148400000",
+          "1h:bar:1792144800000",
+          "1h:bar:1792141200000",
+          "1h:bar:1792137600000",
+          "1h:bar:1792134000000",
+          "1h:bar:1792130400000",
+          "15m:bar:1792164600000",
+          "4h:bar:1792137600000",
+          "1d:bar:1791849600000"
+        ],
+        "title": "量价配合",
+        "condition": "最近已确认上涨柱的成交量高于此前 5 根确认柱均量。按可用原始成交量比较，不编造缺失数据。"
+      }
+    ]
+  }
+}

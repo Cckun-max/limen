@@ -1,0 +1,139 @@
+![tide](assets/tide-badge.svg)
+
+# tide · 本地看盘
+
+已实现：**Hyperliquid 原生永续多币种行情、搜索/筛选/排序、自选分组与本地保存、十周期 K 线、EMA20/60、RSI14、完整 MACD，以及 AI 看盘的输入快照、模型接口、分析展示、追问、本地记录与自定义看盘框架。** DeepSeek `deepseek-flash` 已接通；2026-10-17 完成真实框架分析、追问、版本隔离及页面验证。
+
+加密行情直接从 Hyperliquid 的公开接口获取，不依赖第三方行情平台，不需要交易账户或 API key。新增 **IBKR 美股 / ETF / CME 股指及 COMEX 微型黄金期货只读适配器**，代码与离线测试已完成，真实账户行情待联调；它需要另行登录官方 TWS 或 IB Gateway。React + Lightweight Charts 前端由 FastAPI 提供；后台只绑定 `127.0.0.1`。
+
+## 运行
+
+需要 Python 3.11+、Node.js 22.12+（或 Vite 当前支持的更新版本）：
+
+```bash
+./setup.sh
+./start.sh
+```
+
+打开 [本地看盘页面](http://127.0.0.1:8765)。终端 `Ctrl+C` 停止；关网页不会停止后端，电脑休眠会停止更新。
+
+用 `MARKET_PYTHON=/path/to/python3 ./setup.sh` 指定 Python，`MARKET_PORT=8766 ./start.sh` 修改端口。
+
+如果 pip 提示代理缺少 SOCKS 支持，可在安装时临时取消代理环境变量再执行 setup；运行依赖已包含 HTTP 与 WebSocket 的 SOCKS 支持。不会修改系统代理配置。
+
+## 已实现的行为
+
+- 一次加载约 400 根/周期，SQLite 持久化；启动先读缓存，再校验历史。
+- 目录使用共享 metaAndAssetCtxs，约 20 秒更新；只为查看中的币种按需加载十周期 K 线。每币种一条 WS，共享 REST 限速队列，最多同时 4 个币种；无页面订阅且空闲 2 分钟后释放。每轮 REST 完成后约 30 秒再次校验。
+- 每个周期从最后确认柱、未确认柱或最早缺口补取，按时间去重；旧 WS 不能覆盖已确认 K 线。
+- Hyperliquid 无官方 closed 标志。请求发出时间超过周期边界 2 秒后，REST 返回的历史柱标为本地确认；保留 `source/status/revision/received_at`。迟到更正会修订并重算。
+- K 线图展示成交 OHLC，顶栏展示标记价，涨跌为 mark/prevDayPx−1；成交额 USD，顶栏 OI 为标的币原始数量、列表 OI 为标记价换算的 USD 名义价值，资金费率按 Hyperliquid 小时口径。
+- 图表尾柱指标可以实时变化；右侧概览只使用已确认柱。EMA 用 SMA 初始化，RSI 用 Wilder，MACD histogram=DIF−DEA（不乘 2）。缺口或历史未确认柱会重置指标预热。
+- 连接状态分实时、REST 轮询、离线；缺口、收盘待确认、数据过期分别显示。没有数据时展示等待或错误，不生成演示行情。
+- 周期选择器按分钟、小时、日/周分组，支持键盘方向键、回车和 Esc；全部十个周期均直接使用 Hyperliquid 原生 REST/WS 数据。日线沿用 UTC 00:00，周线沿用接口实测的 UTC 周四 00:00 分界，不按本机时区重聚合。
+- 切换周期、缩放/拖动、重置视野、指标显隐、同步按钮可用；周期选择保存于本地浏览器。
+- 订单簿独立直连公开 WebSocket，默认 `fast: true`，每侧 5 档，本机实测约 0.5 秒推送一次；可切换每侧 20 档深度模式，实测约 5 秒一次。页面显示实际接收间隔与最近更新时间，盘口停滞会自动重连；两种模式的档位不混合。
+
+## 行情列表与自选
+
+- 点击顶部「市场」、搜索框或图表币种名，打开行情列表。可搜索币种或 BTC/USDC，点击表头切换升/降序，缺失值始终置后。
+- 搜索框下方显示最近 10 条搜索：停止输入约 1.2 秒、按回车或点击结果时记录，重复项移到最前；点击历史词可再次搜索，也可单条删除或清空。记录仅保存在当前浏览器本地，刷新后保留。
+- 选择涨跌及最低 24h 成交额筛选；点击币种进入图表。报价、十周期 K 线、指标、订单簿、最新成交和 AI 新快照一起切换，小价格币种使用相应精度。
+- 列表中「星标保存到」选择目标分组，再点星标添加/移除。顶部「自选」可查看各组，工具栏可创建、重命名、删除分组。同一币种可属于多个组。
+- 默认分组不能删除；删除自定义分组会将成员合并进默认分组。下架或目录移除的币种仍留在自选中，可移除但不能切换为行情。
+- 顶部快捷条显示所有分组的自选并去重。币种旁星标管理默认自选；分组和成员存 SQLite，选中的币种/周期存浏览器本地。
+- 加密部分只接 Hyperliquid 原生永续，不含 HIP-3 和现货。新增的 IBKR 具体合约可复用搜索、市场类型筛选及自选分组。分组上限 30 个；尚无拖动排序、导入导出。
+
+## IBKR 美股与期货
+
+入口：顶部「盈透 IBKR」。第一版接行情和 AI 输入，不含下单、持仓或账户查询。原有 Hyperliquid 连接独立运行。
+
+1. 在同一台电脑安装并登录官方 TWS 或 IB Gateway，完成手机验证。应用不接收、不保存盈透用户名、密码或验证码。
+2. 在官方客户端 API 设置中启用 Socket 客户端，勾选 **Read-Only API**，只接受本机连接。核对实际配置的端口；常见默认值为 TWS 实盘 7496 / 模拟 7497，Gateway 实盘 4001 / 模拟 4002。
+3. 本地页面选择对应端口，保留非零连接编号（默认 71），点击「保存并连接」。端口和编号必须与客户端实际状态兼容。连接中断会自动重试，重新连接后重新订阅报价、校验历史。
+4. 已连接后按证券代码查询美股/ETF（如 AAPL、NVDA、SPY），或查询 CME 股指期货 **ES、NQ、MES、MNQ、RTY、M2K**，以及 COMEX 微型黄金 **MGC**。期货必须选择具体到期合约；添加后进入图表，可再点星标加入自选。暂不做主连合约、自动换月和跨合约拼接。搜索 MGC 或“微型黄金”时，全部市场会查询 COMEX 期货；如需同名 MGC ETF，请选择“美股 / ETF”筛选。
+   顶部「市场」也可直接搜索未添加品种：股票代码前缀（如 NV）、英文名称或已收录的中文别名（如英伟达）会查询盈透目录，选择「添加并看盘」后才保存并加载行情。搜索结果独立于下方已添加行情的涨跌/成交额筛选；「我的自选」只筛选当前分组。查询不购买行情、不下单；无行情权限仍可找到合约，但图表可能显示权限错误。中文别名目前覆盖英伟达、苹果、微软、特斯拉、亚马逊、谷歌，不是完整中文证券库。
+5. 数据就绪后，使用现有「AI 看盘」和自定义框架。会带入交易所、合约到期日、交易时区、成交量单位及实际数据截止时间。缺权限、历史不足、断档或过期时阻止生成；不会用演示行情替代。
+
+延迟模式默认启用：请求延迟报价，历史 K 线请求截止于至少 **15 分钟前**，一轮同步结束后约 60 秒继续补取。报价类型以 IBKR 实际回报为准，已有实时权限时仍可能收到实时报价；历史截止和报价时间分别显示。**选择延迟不保证账户能免费取得所有品种的 API 历史数据**，权限不足保留错误，需要真实账户核验。实时模式同样约每分钟补历史柱，不等于 K 线逐笔更新。
+
+支持原有十周期：1/3/5/15/30 分钟、1/2/4 小时、日线、周线。前九种读取 IBKR 原生 `TRADES`，周线按交易所参考交易日汇总日线，并保守地等到下一周一当地零点才确认上一周。股票使用常规时段，期货使用全部时段；以 IBKR `SCHEDULE` 日历识别休市、短交易日和夏令时，不给停盘补假柱。股票沿用上游 `TRADES` 的调整口径，暂不提供复权选择器。
+
+行情缓存用 `ibkr:{conId}` 隔离交易所与到期合约。初始化请求历史，常规同步重取尾部；每六小时或发现缺口后扩大校验范围。多品种共享串行请求队列，最多同时 4 个活动行情、保存 50 个盈透品种。列表中未在查看的 IBKR 品种只显示缓存，不承诺全列表持续实时报价。
+
+买卖栏当前提供**买一、卖一及数量**；深度订单簿、逐笔成交、盘前盘后切换、公司行为处理和到期自动换月尚未接入。新合约历史可能不够指标预热，不能跨到期月份拼数据凑足历史。
+
+接口：`GET /api/v1/ibkr/status`、`PUT /api/v1/ibkr/config`、`GET /api/v1/ibkr/search?q=ES&kind=FUT`、`POST /api/v1/ibkr/instruments`。配置与添加接口要求现有本地写请求头/同源校验。仅连接固定 `127.0.0.1` 的官方客户端，不请求账户、持仓、订单或成交记录，不申请付费行情订阅。
+
+后续部署服务器时，官方客户端需与后端在同机或同一受控本地网络边界内运行；本版本仍仅面向本地访问，未实现公网用户鉴权和多用户数据权限。共享数据仍受此前讨论的 IBKR / 交易所授权约束。
+
+2026-10-17 验证：75 项后端测试（原有 61 项 + 新增 IBKR 14 项）通过，订单簿连接测试与正式前端构建通过；真实页面检查了新入口、端口设置、未登录连接失败提示；独立临时数据库的合成行情检查了美股图表、买卖报价、自选与四周期 AI 快照预览，未发起模型调用。**未连接真实 IBKR 账户，历史权限、具体合约返回值与连续运行仍待联调。** 用法及数据口径参考 [IBKR 历史 K 线](https://www.interactivebrokers.com/docs/tws-api/doc/md/historical-bars)、[延迟行情](https://www.interactivebrokers.com/docs/tws-api/doc/md/delayed-data)和 [ib_async](https://ib-api-reloaded.github.io/ib_async/)。
+
+## 数据与限制
+
+macOS 默认数据库：`~/Library/Application Support/tide/btc-hyperliquid.sqlite3`。Linux 默认 `~/.local/share/tide/`；可用 `MARKET_DATA_DIR` 覆盖。旧数据目录 `LocalMarket` 首次启动会自动迁移；数据库沿用旧文件名 `btc-hyperliquid.sqlite3`，已自动迁移为 `(symbol, timeframe, time)` 主键；原 BTC 缓存、修订号、AI 历史保留。自选也保存在同一数据库。
+
+当前接口最多读取最近 5000 根；图表最多返回最近 800 根缓存。不提供无限历史回溯。无法回补的历史缺口会保留缺失状态，不跨交易所拼接、不填造数据。数据接收时间来自本机时钟，需要系统时钟正确。
+
+SQLite 包含 WAL-reset 修复时启用 WAL，否则回退 DELETE；重要数据用 FULL 同步。数据库同时保存看盘缓存、不可变 AI 输入快照及分析记录，数据库文件权限为 0600。
+
+雷达、批量分析、盯盘和完整复盘属于后续规划；自定义框架第一版已实现。本版本没有账户、钱包或交易接口。
+
+## AI 单币种看盘
+
+1. 在市场列表选择币种、图表选择主周期，点击顶部「AI 看盘」。
+2. 「读取行情快照」会自动搭配相关高低周期，保存每周期最近最多 120 根确认 K 线、最近 20 组指标以及报价、费率、OI 和数据质量。可展开查看实际输入。
+3. 「模型配置」填写服务商的 **Base URL、模型 ID、API Key**。目前适配 Chat Completions 兼容接口，程序在 Base URL 后追加 `/chat/completions`。远程服务要求 HTTPS；本机模型允许 localhost HTTP 和空 Key。输出上限默认 4096，可切换 `max_completion_tokens` / `max_tokens` 参数以匹配服务商。
+4. 保存配置不会发起模型调用。点击「生成 AI 分析」才发送快照和问题；未配置时按钮不可用，不产生演示结论。超过两分钟的预览或不合格行情需要重新读取。
+5. 结果包含多周期观察、关键价位、多空条件和局限。证据可展开；关键价位价格从本地快照读取。结果结构或引用无效时最多修复一次，再失败保留原文并标为失败。
+6. 追问沿用原快照，保留最近三轮已完成问答作为上下文。「新分析」可重新读取行情。所有分析与关联追问自动保存，可从记录打开并导出 JSON；侧栏显示最近 100 条，旧数据不自动删除。
+
+当前配置使用 `https://api.deepseek.com`、`deepseek-flash`、`max_tokens=16384`（2026-10-17 因已有分析被 8192 上限截断而提高）。密钥仅存应用私有配置，不在项目文件中。
+
+## 自定义看盘框架（F17）
+
+在「分析工作台」的新分析页面选择框架；提供多周期共振、趋势跟随、震荡观察三套初始模板。可编辑、新建或复制，修改名称、关注周期、重点指标、1–12 个有序检查步骤和输出偏好。编辑器支持步骤增删和上下移动。
+
+- 周期留空时沿用图表的自动搭配；自选 2–4 个周期时实际取这些周期的数据，并加入图表主周期。重点指标沿用已有算法和参数；不改变图表上的指标显隐。
+- 保存会在 SQLite 写入不可变版本；编辑旧内容也是发布新版本。编辑器可浏览全部已保存版本，并以历史版本继续编辑。所选框架在浏览器记忆，框架本体与版本在本地数据库保存。
+- 读取快照时固定框架全文与版本。换框架或保存新版本后必须重新读取快照。每项检查显示「满足 / 未满足 / 数据不足」及依据，缺少所需指标时由模型明确说明。
+- 历史分析、JSON 导出和关联追问始终沿用原框架版本。更改模板不修改旧记录；旧版默认方法的历史分析仍可读取和追问。
+- 框架是模型的分析偏好，不能覆盖数据真实性要求或变成可执行脚本。逐项结论属于 AI 判断，当前只校验结构、完整步骤和引用，不等同于确定性规则计算或策略回测。第一版不含框架删除、导入导出或独立规则引擎。
+
+接口：`GET/POST /api/v1/ai/frameworks`、`PUT /api/v1/ai/frameworks/{id}`、`GET /api/v1/ai/frameworks/{id}/versions`。更新必须携带 `expected_version`，过时草稿返回 409；快照请求可携带 `framework_id` 和 `framework_version`（同时指定）。兼容旧版不带框架的调用。
+
+模型配置文件：`~/Library/Application Support/tide/ai-private/model.json`（使用 `MARKET_DATA_DIR` 时位于该数据目录下）。目录权限 0700，文件权限 0600；是仅本机当前用户可读写的明文文件，尚未接系统钥匙串。Key 不返回给前端、不写 localStorage、不进入分析记录或错误文本。空 Key 保留原值，更换 Base URL 自动取消旧 Key，避免转发到新地址。
+
+任务以后台作业运行，页面每两秒读状态；生成中可取消。取消停止本地等待，不承诺撤销上游已产生的费用。一次仅允许一个模型任务；总超时 155 秒，进程重启会把遗留任务标记为失败。记录保留模型标识、输入、提示词版本、每次原始响应、可用 token 用量、快照与哈希。数据与引用检查不等于对模型所有文字推理的事实验证。
+
+接口：`GET/PUT /api/v1/ai/config`、`POST /api/v1/ai/snapshots`、`POST/GET /api/v1/ai/analyses`、`GET /api/v1/ai/analyses/{id}`、`POST /api/v1/ai/analyses/{id}/cancel`、`GET /api/v1/ai/analyses/{id}/export`。写请求要求 `X-Local-Market: 1` 及同源 Origin（如提供）；API 响应禁止缓存。
+
+适配字段参考 [OpenAI 官方 Chat Completions API](https://developers.openai.com/api/reference/resources/chat)及 [DeepSeek 官方 Chat Completions API](https://api-docs.deepseek.com/api/create-chat-completion/)。DeepSeek 已完成单次真实分析联调，其他服务商仍需分别实测。
+
+## 开发与验证
+
+```bash
+.venv/bin/python -m pytest -q
+cd frontend
+npm run build
+npm run dev
+```
+
+订单簿连接与恢复测试（Node.js 22.18+）：`node --test frontend/tests/orderBookStream.test.mjs`，在项目根目录执行。
+
+开发前端默认 5173，API 代理到 8765；同时运行后端。正式页面由 8765 同源提供。
+
+行情接口可带 `?symbol=ETH`（默认 BTC），AI 快照请求体可带 `symbol`。目录为 `GET /api/v1/markets`；自选为 `GET/POST /api/v1/watchlists`、`PATCH/DELETE /api/v1/watchlists/{group_id}`、`PUT/DELETE /api/v1/watchlists/{group_id}/items/{symbol}`。自选写请求要求同源和本地请求头。
+
+本地接口：`GET /api/v1/overview`、`GET /api/v1/chart/{1m|3m|5m|15m|30m|1h|2h|4h|1d|1w}`、`GET /api/v1/events`（完整状态 SSE）、`GET /api/v1/health`、`POST /api/v1/refresh`（需 `X-Local-Market: 1`）。
+
+前端精确依赖版本见 `package-lock.json`；Python 环境锁定见 `requirements.txt`。指标与补数测试使用标明的合成夹具，不是展示行情。
+
+## 来源与许可
+
+- [Hyperliquid 信息接口](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint)
+- [WebSocket 订阅](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions)
+- [公开接口限额](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/rate-limits-and-user-limits)
+- [Lightweight Charts](https://github.com/tradingview/lightweight-charts)，Apache-2.0；页面保留归属链接和图内 attribution logo，相关 NOTICE 在 `THIRD_PARTY_NOTICES.txt`。
+
+全部实现独立编写，未复制任何第三方业务脚本或代码。

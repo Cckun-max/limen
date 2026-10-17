@@ -1,0 +1,11 @@
+.venv/
+frontend/node_modules/
+frontend/dist/
+.data/
+__pycache__/
+.pytest_cache/
+*.pyc
+.DS_Store
+design-qa.md
+verification/vergex-comparison-2026-10-17/
+verification/vergex-reference.png

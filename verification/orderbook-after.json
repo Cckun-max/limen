@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-13",
+  "symbol": "DOGE",
+  "fastFirst": {
+    "intervalMs": "506",
+    "receivedAt": "1791822214831",
+    "sequence": "23",
+    "sourceTime": "1791822214542",
+    "text": "上次更新 0.4 秒前间隔约 0.5 秒"
+  },
+  "deep": {
+    "intervalMs": "5151",
+    "receivedAt": "1791822237568",
+    "sequence": "4",
+    "sourceTime": "1791822237151",
+    "text": "上次更新 1.1 秒前间隔约 5.2 秒"
+  },
+  "deepLevelsPerSide": 20,
+  "fastFinal": {
+    "intervalMs": "530",
+    "receivedAt": "1791822287496",
+    "sequence": "89",
+    "sourceTime": "1791822286974",
+    "text": "上次更新 0.0 秒前间隔约 0.5 秒"
+  },
+  "fastLevels": {
+    "asks": 5,
+    "bids": 5
+  }
+}
