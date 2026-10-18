@@ -14,22 +14,26 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .catalog import MarketHub
 from .watchlists import Watchlists, router as watchlist_router
 from .models import TIMEFRAMES
+from .network import allowed_hosts
 from .storage import Store
 from .ai import AnalysisService
 from .ai_routes import router as ai_router
 from .ibkr import router as ibkr_router
 from .intel import IntelService, router as intel_router
 from .options_sample import router as options_router
+from .options_runtime import OptionsService, router as options_live_router
 from .exams import router as exams_router
 from .exam_runtime import ExamService
 
 
 def default_data_dir():
     base = Path.home() / "Library/Application Support" if sys.platform == "darwin" else Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share"))
-    folder = base / "tide"
-    legacy = base / "LocalMarket"
-    if not folder.exists() and legacy.exists():
-        legacy.rename(folder)
+    folder = base / "limen"
+    if not folder.exists():
+        for legacy in (base / "tide", base / "LocalMarket"):
+            if legacy.exists():
+                legacy.rename(folder)
+                break
     return folder
 
 
@@ -44,13 +48,21 @@ def create_app(data_dir: Path | None = None, *, live: bool = True):
         app.state.ai = AnalysisService(app.state.market, folder)
         app.state.intel = IntelService(folder, live=live)
         app.state.exams = ExamService(store, app.state.hub)
+        options_collection_lock = asyncio.Lock()
+        app.state.options = OptionsService(folder, app.state.hub.broker, collection_lock=options_collection_lock)
+        app.state.nq_options = OptionsService(folder, app.state.hub.broker, 'NQ', options_collection_lock)
+        app.state.options_by_symbol = {'ES': app.state.options, 'NQ': app.state.nq_options}
         if live:
             await app.state.hub.start()
             await app.state.intel.start()
             await app.state.exams.start()
+            await app.state.options.start()
+            await app.state.nq_options.start()
         try:
             yield
         finally:
+            await app.state.nq_options.stop()
+            await app.state.options.stop()
             await app.state.exams.stop()
             await app.state.intel.stop()
             await app.state.ai.stop()
@@ -58,12 +70,13 @@ def create_app(data_dir: Path | None = None, *, live: bool = True):
             store.close()
 
     app = FastAPI(title="LIMEN", version="0.2.0", lifespan=lifespan)
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts())
     app.include_router(ai_router)
     app.include_router(watchlist_router)
     app.include_router(ibkr_router)
     app.include_router(intel_router)
     app.include_router(options_router)
+    app.include_router(options_live_router)
     app.include_router(exams_router)
 
     @app.get("/api/v1/markets")
@@ -79,7 +92,7 @@ def create_app(data_dir: Path | None = None, *, live: bool = True):
     @app.middleware("http")
     async def private_responses(request: Request, call_next):
         response = await call_next(request)
-        if request.url.path.startswith(("/api/v1/ai", "/api/v1/intel", "/api/v1/exams")):
+        if request.url.path.startswith(("/api/v1/ai", "/api/v1/intel", "/api/v1/exams", "/api/v1/options")):
             response.headers["Cache-Control"] = "no-store"
         return response
 

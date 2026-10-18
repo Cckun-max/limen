@@ -8,6 +8,8 @@
 
 ## 运行
 
+给朋友访问可先使用 [免费分享本机方案](share/README.md)：Tailscale Funnel 提供 HTTPS 网址，本机网关统一行情与回测入口并要求密码。需要本人登录 Tailscale、完成公网验收后才算上线；电脑需保持运行。另有 [Linux 服务器部署备用方案](deploy/README.md)，目前没有购买或部署服务器。
+
 需要 Python 3.11+、Node.js 22.12+（或 Vite 当前支持的更新版本）：
 
 ```bash
@@ -79,7 +81,7 @@
 - 持仓榜 top25 可点击加入/取消跟踪（≤50 个地址）；大户事件来自官方 `userFills`，推导开/加/减/平/反手。
 - 每块数据带来源、快照时间与覆盖率徽章（未验证 / 抽样通过 / 抽样失败）；覆盖率默认是 top25 抽样口径，不代表全市场。
 - 额度 50,000 次/月，本地硬顶 45,000，基准节奏模拟 21,600/月；80% 告警，401/429/断网降级不崩。
-- key 仅存 `~/Library/Application Support/tide/liqflow.json`（0600），可用 `LIQFLOW_API_KEY` 覆盖，绝不进仓库。
+- key 仅存 `~/Library/Application Support/limen/liqflow.json`（0600），可用 `LIQFLOW_API_KEY` 覆盖，绝不进仓库。
 - 抽样核对：`.venv/bin/python scripts/verify_liquidation_sample.py --samples 12`。
 - 2026-10-18 验证：新增 23 项后端测试（总计 **102 项通过**）、真实 LiqFlow 采集、前端构建与 headless 实页截图通过；19 个持仓抽样 94.7% 在 0.5% 阈值内，中位偏差 0.067%。**带 key 的真实过期/429 未实测，协议分支为 mock 覆盖。**
 - 升级后需重启 `./start.sh`；完整口径、时间线与运维见 [`docs/零元面板使用与边界.md`](docs/零元面板使用与边界.md)。
@@ -94,7 +96,9 @@
 
 ## 数据与限制
 
-macOS 默认数据库：`~/Library/Application Support/tide/btc-hyperliquid.sqlite3`。Linux 默认 `~/.local/share/tide/`；可用 `MARKET_DATA_DIR` 覆盖。旧数据目录 `LocalMarket` 首次启动会自动迁移；数据库沿用旧文件名 `btc-hyperliquid.sqlite3`，已自动迁移为 `(symbol, timeframe, time)` 主键；原 BTC 缓存、修订号、AI 历史保留。自选也保存在同一数据库。
+顶部导航「回测」在原页面内切换到 [回测研究](http://127.0.0.1:8765/#/research)，顶部导航保留。回测后台由 `./research.sh` 独立启动（8870 端口），不要求重启正在运行的看盘服务。它只读同一项目行情缓存，通过独立子进程进行单次执行检查；研究源、配置和账本单独保存。当前已有 27 个可计算模块与三个起始模板，未来可替换数据源、增加因子。完整范围与扩展接口见[研究框架说明](../quantlab/README.md)。
+
+macOS 默认数据库：`~/Library/Application Support/limen/btc-hyperliquid.sqlite3`。Linux 默认 `~/.local/share/limen/`；可用 `MARKET_DATA_DIR` 覆盖。旧数据目录 `tide`（更早 `LocalMarket`）首次启动会自动迁移；数据库沿用旧文件名 `btc-hyperliquid.sqlite3`，已自动迁移为 `(symbol, timeframe, time)` 主键；原 BTC 缓存、修订号、AI 历史保留。自选也保存在同一数据库。
 
 当前接口最多读取最近 5000 根；图表最多返回最近 800 根缓存。不提供无限历史回溯。无法回补的历史缺口会保留缺失状态，不跨交易所拼接、不填造数据。数据接收时间来自本机时钟，需要系统时钟正确。
 
@@ -125,7 +129,7 @@ SQLite 包含 WAL-reset 修复时启用 WAL，否则回退 DELETE；重要数据
 
 接口：`GET/POST /api/v1/ai/frameworks`、`PUT /api/v1/ai/frameworks/{id}`、`GET /api/v1/ai/frameworks/{id}/versions`。更新必须携带 `expected_version`，过时草稿返回 409；快照请求可携带 `framework_id` 和 `framework_version`（同时指定）。兼容旧版不带框架的调用。
 
-模型配置文件：`~/Library/Application Support/tide/ai-private/model.json`（使用 `MARKET_DATA_DIR` 时位于该数据目录下）。目录权限 0700，文件权限 0600；是仅本机当前用户可读写的明文文件，尚未接系统钥匙串。Key 不返回给前端、不写 localStorage、不进入分析记录或错误文本。空 Key 保留原值，更换 Base URL 自动取消旧 Key，避免转发到新地址。
+模型配置文件：`~/Library/Application Support/limen/ai-private/model.json`（使用 `MARKET_DATA_DIR` 时位于该数据目录下）。目录权限 0700，文件权限 0600；是仅本机当前用户可读写的明文文件，尚未接系统钥匙串。Key 不返回给前端、不写 localStorage、不进入分析记录或错误文本。空 Key 保留原值，更换 Base URL 自动取消旧 Key，避免转发到新地址。
 
 任务以后台作业运行，页面每两秒读状态；生成中可取消。取消停止本地等待，不承诺撤销上游已产生的费用。一次仅允许一个模型任务；总超时 155 秒，进程重启会把遗留任务标记为失败。记录保留模型标识、输入、提示词版本、每次原始响应、可用 token 用量、快照与哈希。数据与引用检查不等于对模型所有文字推理的事实验证。
 

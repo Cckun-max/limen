@@ -29,10 +29,14 @@ def data_directory(explicit=None):
         return Path(configured).expanduser()
     base = (Path.home() / "Library/Application Support" if sys.platform == "darwin"
             else Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")))
-    folder, legacy = base / "tide", base / "LocalMarket"
+    folder = base / "limen"
     # The service migrates this folder on startup. Merely inspecting settings
     # must not rename it or create a database.
-    return legacy if not folder.exists() and legacy.exists() else folder
+    if not folder.exists():
+        for legacy in (base / "tide", base / "LocalMarket"):
+            if legacy.exists():
+                return legacy
+    return folder
 
 
 def read_settings(path):

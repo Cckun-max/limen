@@ -41,8 +41,8 @@ HARD_CAP = 45_000
 
 def default_data_dir() -> Path:
     if sys.platform == "darwin":
-        return Path.home() / "Library/Application Support/tide"
-    return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "tide"
+        return Path.home() / "Library/Application Support/limen"
+    return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "limen"
 
 
 def load_key(data_dir: Path) -> tuple[str, str]:

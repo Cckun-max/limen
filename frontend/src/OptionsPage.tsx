@@ -2,118 +2,102 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
 import './options.css';
 
-type OptionRow = {
-  id: number; name: string; expiry: string; strike: number; right: 'C' | 'P';
-  midpoint: number | null; iv: number | null; delta: number | null; gamma: number | null;
-  vega: number | null; theta: number | null; volume: number | null;
-};
-type Sample = {
-  mode: 'historical_sample'; target: string; underlying: string; interval_minutes: number;
-  collected_at: string; bar_start: string; bar_end: string; available_times: string[];
-  interest_rate: number; underlying_price: number | null; expiries: string[];
-  expected_contracts: number; priced_contracts: number; trade_contracts: number;
-  rows: OptionRow[]; skew: OptionRow[]; term: OptionRow[];
-  vx: { name: string; expiry: string; price: number | null }[];
-};
-type Point = { x: number; y: number | null; label: string };
-const fmt = (v: number | null | undefined, digits = 2) => v == null ? '—' : v.toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits });
-const percent = (v: number | null | undefined) => v == null ? '—' : `${fmt(v * 100)}%`;
-const expiryText = (d: string) => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
-const expiryAxis = (d: string) => `${d.slice(4, 6)}/${d.slice(6, 8)}`;
-const expiryTime = (d: string) => Date.parse(`${expiryText(d)}T00:00:00Z`);
-const chinaTime = (d: string) => new Intl.DateTimeFormat('zh-CN', {
-  timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-}).format(new Date(d));
+type Row = {id:number;name:string;expiry:string;strike:number;right:'C'|'P';midpoint:number|null;iv:number|null;delta:number|null;gamma:number|null;vega:number|null;theta:number|null;volume:number|null;session_volume:number|null;oi:number|null;oi_date:string|null;gex:number|null};
+type Target = 'ES'|'NQ';
+type Data = {target:Target;multiplier?:number;underlying:string;underlying_price:number;bar_start:string;bar_end:string;collected_at:string;rate:{date:string;rate:number};rows:Row[];vx:{name:string;expiry:string;price:number|null}[];expiries:string[];expected_contracts:number;priced_contracts:number;oi_contracts:number;oi_dates:string[];oi_preliminary:boolean;strike_min:number;strike_max:number;strike_step:number};
+type Status = {automatic:boolean;running:boolean;phase:string;next_update:string;last_attempt?:string;last_success?:string;error?:string;warnings:string[];progress?:number;total?:number};
+type Payload = {status:Status;data:Data|null};
+type Point = {x:number;y:number|null;label:string};
+const fmt = (v:number|null|undefined,d=2) => v==null?'—':v.toLocaleString('zh-CN',{minimumFractionDigits:d,maximumFractionDigits:d});
+const pct = (v:number|null|undefined) => v==null?'—':`${fmt(v*100)}%`;
+const dateText = (d:string) => `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}`;
+const time = (d?:string) => d?new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date(d)):'—';
+const expiryAxis = (d:string) => `${d.slice(4,6)}/${d.slice(6,8)}`;
+const expiryTime = (d:string) => Date.parse(`${dateText(d)}T00:00:00Z`);
 
-function Curve({ points, label, unit = '%', color = '#b4a0ff' }: { points: Point[]; label: string; unit?: string; color?: string }) {
-  const values = points.flatMap(p => p.y == null ? [] : [p.y]);
-  if (!values.length) return <p className="options-empty">所选时间缺少数据</p>;
-  const min = Math.min(...values), max = Math.max(...values), pad = Math.max((max - min) * .38, .25);
-  const low = min - pad, high = max + pad;
-  const xMin = Math.min(...points.map(p => p.x)), xMax = Math.max(...points.map(p => p.x));
-  const x = (p: Point) => 44 + (p.x - xMin) / (xMax - xMin || 1) * 300;
-  const y = (v: number) => 112 - (v - low) / (high - low) * 86;
-  let interrupted = true;
-  const path = points.map(p => {
-    if (p.y == null) { interrupted = true; return ''; }
-    const command = interrupted ? 'M' : 'L'; interrupted = false;
-    return `${command} ${x(p)} ${y(p.y)}`;
-  }).join(' ');
-  return <svg className="options-curve" viewBox="0 0 390 145" role="img" aria-label={label}>
-    {[low, (low + high) / 2, high].map(v => <g key={v}><line x1="40" x2="354" y1={y(v)} y2={y(v)} stroke="#2b2b32" strokeDasharray="3 4"/><text x="33" y={y(v) + 4} textAnchor="end" fill="#777782" fontSize="10">{v.toFixed(1)}</text></g>)}
+function Curve({points,label,unit='%',color='#b4a0ff'}:{points:Point[];label:string;unit?:string;color?:string}) {
+  const values=points.flatMap(p=>p.y==null?[]:[p.y]);
+  if(!values.length)return <p className="options-empty">暂无有效报价</p>;
+  const min=Math.min(...values),max=Math.max(...values),pad=Math.max((max-min)*.25,.1),low=min-pad,high=max+pad;
+  const xmin=Math.min(...points.map(p=>p.x)),xmax=Math.max(...points.map(p=>p.x));
+  const x=(p:Point)=>42+(p.x-xmin)/(xmax-xmin||1)*300,y=(v:number)=>115-(v-low)/(high-low)*90;
+  let interrupted=true;
+  const path=points.map(p=>{if(p.y==null){interrupted=true;return '';}const command=interrupted?'M':'L';interrupted=false;return `${command} ${x(p)} ${y(p.y)}`;}).join(' ');
+  return <svg className="options-curve" viewBox="0 0 385 145" role="img" aria-label={label}>
+    {[low,(low+high)/2,high].map(v=><g key={v}><line x1="40" x2="347" y1={y(v)} y2={y(v)} stroke="#2b2b32" strokeDasharray="3 4"/><text x="34" y={y(v)+4} textAnchor="end" fill="#8b8795" fontSize="10">{v.toFixed(1)}</text></g>)}
     <path d={path} fill="none" stroke={color} strokeWidth="2"/>
-    {points.map(p => <g key={p.x}>
-      <text x={x(p)} y="136" textAnchor="middle" fill="#9999a6" fontSize="11">{p.label}</text>
-      {p.y != null && <><circle cx={x(p)} cy={y(p.y)} r="4" fill={color}><title>{p.label}：{fmt(p.y)}{unit}</title></circle><text x={x(p)} y={y(p.y) - 10} textAnchor="middle" fill={color} fontSize="11">{fmt(p.y)}{unit}</text></>}
-    </g>)}
+    {points.map((p,i)=><g key={p.x}>{(points.length<6||i%4===0||i===points.length-1)&&<text x={x(p)} y="138" textAnchor="middle" fill="#aaa3b8" fontSize="10">{p.label}</text>}{p.y!=null&&<circle cx={x(p)} cy={y(p.y)} r="3" fill={color}><title>{p.label}：{fmt(p.y)}{unit}</title></circle>}</g>)}
   </svg>;
 }
 
-export function OptionsPage() {
-  const [samples, setSamples] = useState<Sample[]>([]);
-  const [selectedTime, setSelectedTime] = useState('');
-  const data = samples.find(sample => sample.bar_start === selectedTime) || samples.at(-1) || null;
-  const [expiry, setExpiry] = useState('');
-  const [contractId, setContractId] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [refreshKey, setRefreshKey] = useState(0);
-  useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true); setError('');
-    fetch('/assets/options/es-sample.json', { signal: controller.signal, cache: 'no-store' })
-      .then(async response => {
-        const value = await response.json();
-        if (!response.ok) throw new Error(value.detail || '期权样本暂不可读');
-        if (!Array.isArray(value.samples) || !value.samples.length) throw new Error('本地期权样本为空');
-        return value.samples as Sample[];
-      }).then(value => { if (!controller.signal.aborted) setSamples(value); })
-      .catch(e => { if (!controller.signal.aborted) setError(e.message || '本地服务暂未连接'); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
-  }, [refreshKey]);
-  const activeExpiry = data?.expiries.includes(expiry) ? expiry : data?.expiries[0] || '';
-  const rows = data?.rows.filter(row => row.expiry === activeExpiry) || [];
-  const selected = rows.find(row => row.id === contractId) || rows.find(row => row.strike === 7700 && row.right === 'P') || rows[0];
-  return <main className="options-page" aria-label="ES 期权样本看板">
-    <div className="options-heading"><div><span className="options-eyebrow">ES FUTURES OPTIONS</span><h1>ES 期权 <span>历史试验</span></h1></div><a href="#/trade" className="options-back"><ArrowLeft size={15}/>返回期货图表</a></div>
-    <div className="options-notice" role="status"><strong>30 分钟历史样本 · 盘中自动采集尚未启用</strong><span>展示已取到的真实历史数据与本地试算。当前买卖报价、OI、全链成交量与 Put/Call 比尚未取得。</span></div>
-    {error && <div className="options-error" role="alert">{error}<button onClick={() => setRefreshKey(v => v + 1)}>重试读取</button>{data && <span>下面仍显示上一次成功读取的历史样本。</span>}</div>}
-    {!data ? <div className="options-loading">{loading ? '正在读取本地期权试验结果…' : '尚无可展示的期权样本。'}</div> : <>
-      <div className="options-controls">
-        <label>样本时段（北京时间）<select aria-label="期权样本时段" disabled={loading} value={data.bar_start} onChange={e => setSelectedTime(e.target.value)}>{[...data.available_times].reverse().map(t => <option value={t} key={t}>{chinaTime(t)}–{chinaTime(new Date(Date.parse(t) + 1800000).toISOString()).slice(-5)}</option>)}</select></label>
-        <label>ES 到期日<select aria-label="ES 期权到期日" value={activeExpiry} onChange={e => { setExpiry(e.target.value); setContractId(null); }}>{data.expiries.map(d => <option key={d} value={d}>{expiryText(d)}</option>)}</select></label>
-        <div className="options-coverage"><strong>{data.priced_contracts}/{data.expected_contracts}</strong><span>合约有 IV / Greeks · 三个执行价</span></div>
-        <button className="options-refresh" disabled={loading} onClick={() => setRefreshKey(v => v + 1)} title="重新读取本地试验文件，不请求行情商"><RefreshCw size={14}/>{loading ? '读取中…' : '重读本地结果'}</button>
+function Distribution({rows,field}:{rows:Row[];field:'gex'|'oi'}) {
+  const strikes=[...new Set(rows.map(r=>r.strike))].sort((a,b)=>a-b);
+  const points=strikes.map(k=>{const at=rows.filter(r=>r.strike===k);const values=(side:string)=>at.filter(r=>r.right===side&&r[field]!=null).map(r=>r[field]!);const c=values('C'),p=values('P');return {k,c:c.length?c.reduce((a,b)=>a+b,0):null,p:p.length?p.reduce((a,b)=>a+b,0):null};});
+  if(!points.some(p=>p.c!=null||p.p!=null))return <p className="options-empty">持仓报告更新后显示分布</p>;
+  const scale=field==='gex'?1e6:1;
+  const max=Math.max(1,...points.flatMap(p=>[Math.abs(p.c||0)/scale,Math.abs(p.p||0)/scale]));
+  const zero=field==='gex'?106:177,range=field==='gex'?78:145;
+  const x=(i:number)=>55+i*640/Math.max(1,points.length-1),y=(v:number)=>zero-v/scale/max*range;
+  const width=Math.min(12,280/points.length);
+  return <svg className="options-distribution" viewBox="0 0 750 220" role="img" aria-label={field==='gex'?'Gamma 敞口执行价分布':'持仓量执行价分布'}>
+    <text x="18" y="16" fill="#9d96ad" fontSize="11">{field==='gex'?'百万美元 / 1% 价格变化':'手'}</text>
+    {(field==='gex'?[-max,0,max]:[0,max/2,max]).map(v=><g key={v}><line x1="49" x2="712" y1={zero-v/max*range} y2={zero-v/max*range} stroke="#302b3a" strokeDasharray="3 4"/><text x="43" y={zero-v/max*range+4} textAnchor="end" fill="#93899f" fontSize="10">{fmt(v,field==='gex'?1:0)}</text></g>)}
+    {points.map((p,i)=><g key={p.k}>{[p.c,p.p].map((v,j)=>v==null?null:<rect key={j} x={x(i)+(j?1:-width-1)} y={Math.min(zero,y(v))} width={width} height={Math.max(.7,Math.abs(y(v)-zero))} fill={j?'#e989a2':'#77d1ba'}><title>{p.k} · {j?'Put':'Call'}：{fmt(v/scale,field==='gex'?3:0)}{field==='gex'?' 百万美元':' 手'}</title></rect>)}{(i%2===0||i===points.length-1)&&<text x={x(i)} y="207" textAnchor="middle" fontSize="10" fill="#aaa2b8">{p.k}</text>}</g>)}
+    {field==='gex'&&<path d={points.map((p,i)=>p.c==null||p.p==null?'':`${i===0||points[i-1].c==null||points[i-1].p==null?'M':'L'} ${x(i)} ${y(p.c+p.p)}`).join(' ')} fill="none" stroke="#c5acff" strokeWidth="2"/>}
+  </svg>;
+}
+
+function paired(rows:Row[],field:'oi'|'volume'|'session_volume') {
+  const pairs=new Map<number,Partial<Record<'C'|'P',number|null>>>();
+  for(const row of rows){const p=pairs.get(row.strike)||{};p[row.right]=row[field];pairs.set(row.strike,p);}
+  const complete=[...pairs.values()].filter(p=>p.C!=null&&p.P!=null);
+  const c=complete.reduce((n,p)=>n+p.C!,0),p=complete.reduce((n,p)=>n+p.P!,0);
+  return {c:complete.length?c:null,p:complete.length?p:null,ratio:c?p/c:null,n:complete.length,total:pairs.size};
+}
+
+export function OptionsPage(){
+  const [target,setTarget]=useState<Target>(()=>{try{return localStorage.getItem('options-target')==='NQ'?'NQ':'ES';}catch{return 'ES';}});
+  const choose=(value:Target)=>{setTarget(value);try{localStorage.setItem('options-target',value);}catch{/* Selection still works without storage. */}};
+  return <OptionsBoard key={target} target={target} choose={choose}/>;
+}
+
+function OptionsBoard({target,choose}:{target:Target;choose:(value:Target)=>void}){
+  const [payload,setPayload]=useState<Payload|null>(null),[error,setError]=useState(''),[expiry,setExpiry]=useState(''),[contractId,setContractId]=useState<number|null>(null),[sending,setSending]=useState(false);
+  const endpoint=`/api/v1/options/${target.toLowerCase()}`;
+  useEffect(()=>{
+    const controller=new AbortController();let pending=false;
+    const read=async()=>{if(pending)return;pending=true;try{const r=await fetch(endpoint,{signal:controller.signal,cache:'no-store'});if(!r.ok)throw Error();const value=await r.json();if(value.data&&value.data.target!==target)throw Error();if(!controller.signal.aborted){setPayload(value);setError('');}}catch{if(!controller.signal.aborted)setError('连接暂时中断，正在自动重连');}finally{pending=false;}};
+    void read();const timer=window.setInterval(read,5000);
+    const visible=()=>{if(document.visibilityState==='visible')void read();};document.addEventListener('visibilitychange',visible);
+    return()=>{controller.abort();clearInterval(timer);document.removeEventListener('visibilitychange',visible);};
+  },[endpoint,target]);
+  const data=payload?.data,status=payload?.status;
+  const active=data?.expiries.includes(expiry)?expiry:data?.expiries[0]||'';
+  const rows=data?.rows.filter(r=>r.expiry===active)||[];
+  const atm=data?Math.round(data.underlying_price/data.strike_step)*data.strike_step:0;
+  const selected=rows.find(r=>r.id===contractId)||rows.find(r=>r.strike===atm&&r.right==='P')||rows[0];
+  const oi=paired(rows,'oi'),volume=paired(rows,'volume'),session=paired(rows,'session_volume');
+  const skew=rows.filter(r=>r.right===(r.strike<(data?.underlying_price||0)?'P':'C'));
+  const term=data?.expiries.map(e=>data.rows.find(r=>r.expiry===e&&r.strike===atm&&r.right===(atm<data.underlying_price?'P':'C'))).filter((r):r is Row=>!!r)||[];
+  const refresh=async()=>{setSending(true);try{const r=await fetch(`${endpoint}/refresh`,{method:'POST',headers:{'X-Local-Market':'1'}});if(!r.ok)throw Error();const state=await fetch(endpoint,{cache:'no-store'});if(state.ok)setPayload(await state.json());setError('');}catch{setError('暂时无法更新，稍后将自动重试');}finally{setSending(false);}};
+  return <main className="options-page" aria-label={`${target} 期权看板`}>
+    <div className="options-heading"><div><span className="options-eyebrow">FUTURES OPTIONS</span><h1>{target} 期权 <span>每 30 分钟更新</span></h1></div><div className="options-products" role="group" aria-label="期权标的"><button aria-pressed={target==='ES'} onClick={()=>choose('ES')}>ES 标普 500</button><button aria-pressed={target==='NQ'} onClick={()=>choose('NQ')}>NQ 纳斯达克 100</button></div><a className="options-back" href="#/trade"><ArrowLeft size={15}/>返回期货图表</a></div>
+    <div className="options-status" role="status"><div><i className={status?.running?'updating':''}/><strong>{status?.running?`${status.phase}${status.total?` ${status.progress||0}/${status.total}`:''}`:status?.error?'等待重连':status?.automatic?'自动更新已开启':'正在连接'}</strong></div><span>最近检查 {time(status?.last_success)}</span><span>{status?.running?'本轮完成后安排下次更新':`下次更新 ${time(status?.next_update)}`}</span><button className="options-refresh" onClick={refresh} disabled={sending||status?.running||!!error}><RefreshCw size={14}/>{sending||status?.running?'更新中…':'立即更新'}</button></div>
+    {(error||status?.error)&&<p className="options-error" role="alert">{error||status?.error}{data?' · 保留最近有效行情':''}</p>}
+    {!!status?.warnings?.length&&<p className="options-warning">{status.warnings.join(' · ')}</p>}
+    {!data?<div className="options-loading">正在获取 {target} 期权行情…<p>首次更新需要几分钟，完成后自动显示。</p></div>:<>
+      <div className="options-controls"><label>到期日<select aria-label={`${target} 期权到期日`} value={active} onChange={e=>{setExpiry(e.target.value);setContractId(null);}}>{data.expiries.map(d=><option value={d} key={d}>{dateText(d)}</option>)}</select></label><div className="options-coverage"><strong>{data.underlying} {fmt(data.underlying_price)}</strong><span>{data.strike_min}–{data.strike_max} · 间隔 {data.strike_step} 点 · IV {data.priced_contracts}/{data.expected_contracts} · OI {data.oi_contracts}/{data.expected_contracts}</span></div><span className="options-asof">行情截至 {time(data.bar_end)} · 北京时间</span></div>
+      <div className="options-grid">
+        <section className="options-card options-gamma"><header><h2>Gamma 敞口分布</h2><span className="options-tag">{rows.filter(r=>r.gex!=null).length}/{rows.length} 合约</span></header><div className="options-legend"><span className="call">Call</span><span className="put">Put</span><span className="net">净值估算</span><span>OI {data.oi_dates.join(' / ')||'等待更新'}{data.oi_preliminary?' · 初步报告':''}</span></div><Distribution rows={rows} field="gex"/><p>按执行价汇总 · Call 正、Put 负；这是持仓假设下的估算，不代表做市商真实仓位。</p></section>
+        <section className="options-card"><header><h2>价格、IV 与 Greeks</h2><span className="options-tag">30 分钟参考价</span></header><select className="options-contract" aria-label="期权合约" value={selected?.id||''} onChange={e=>setContractId(Number(e.target.value))}>{rows.map(r=><option key={r.id} value={r.id}>{r.strike} · {r.right==='C'?'Call 看涨':'Put 看跌'}</option>)}</select><div className="options-primary"><strong>{pct(selected?.iv)}</strong><span>IV · 中间价 {fmt(selected?.midpoint)} 点</span></div><dl className="options-greeks">{(['delta','gamma','vega','theta'] as const).map(k=><div key={k}><dt>{({delta:'Delta',gamma:'Gamma',vega:'Vega / 1%',theta:'Theta / 日'})[k]}</dt><dd>{fmt(selected?.[k],k==='gamma'?6:4)}</dd></div>)}</dl><p>延迟行情；报价取已完成的半小时收盘中间价。</p></section>
+        <section className="options-card"><header><h2>波动率偏斜 Skew</h2><span className="options-tag">{expiryAxis(active)}</span></header><Curve label="虚值期权波动率偏斜" points={skew.map(r=>({x:r.strike,y:r.iv==null?null:r.iv*100,label:String(r.strike)}))}/><p>同一到期日 · 虚值 Put / Call · 执行价</p></section>
+        <section className="options-card"><header><h2>IV 期限结构</h2><span className="options-tag">近似平值</span></header><Curve label="近似平值 IV 期限结构" points={term.map(r=>({x:expiryTime(r.expiry),y:r.iv==null?null:r.iv*100,label:expiryAxis(r.expiry)}))} color="#77d1ba"/><p>各到期日统一执行价 {atm} · 到期日</p></section>
+        <section className="options-card"><header><h2>VIX 期货期限结构</h2><span className="options-tag">VX</span></header><Curve label="VIX 期货期限结构" points={data.vx.map(r=>({x:expiryTime(r.expiry),y:r.price,label:expiryAxis(r.expiry)}))} unit="" color="#e3b776"/><p>独立 VX 期货 · 同一半小时成交收盘价</p></section>
+        <section className="options-card options-oi"><header><h2>持仓量分布</h2><span className="options-tag">日级 OI</span></header><Distribution rows={rows} field="oi"/><div className="options-ratios"><span>Put/Call <b>{fmt(oi.ratio)}</b></span><span>Call <b>{fmt(oi.c,0)}</b></span><span>Put <b>{fmt(oi.p,0)}</b></span></div><p>所选到期日、所示执行价 · {oi.n}/{oi.total} 对合约；不含未取得的持仓量。</p></section>
+        <section className="options-card"><header><h2>成交量与 Put/Call</h2><span className="options-tag">所选范围</span></header><div className="options-primary"><strong>{fmt(volume.ratio)}</strong><span>半小时 Put/Call · {volume.n}/{volume.total} 对合约</span><span>所选合约当日累计 {fmt(selected?.session_volume,0)} 手</span></div><dl className="options-greeks"><div><dt>半小时 Call</dt><dd>{fmt(volume.c,0)}</dd></div><div><dt>半小时 Put</dt><dd>{fmt(volume.p,0)}</dd></div><div><dt>当日 Call</dt><dd>{fmt(session.c,0)}</dd></div><div><dt>当日 Put</dt><dd>{fmt(session.p,0)}</dd></div></dl><p>当日 Put/Call {fmt(session.ratio)} · 完整时段 {session.n}/{session.total} 对合约。缺少成交记录的合约不计入。</p></section>
       </div>
-      <div className="options-grid" aria-busy={loading}>
-        <section className="options-card"><header><h2><span>01</span>价格、IV 与 Greeks</h2><b className="options-tag">历史试算</b></header>
-          <select className="options-contract" aria-label="期权样本合约" value={selected?.id || ''} onChange={e => setContractId(Number(e.target.value))}>{rows.map(row => <option key={row.id} value={row.id}>{row.strike} · {row.right === 'C' ? '看涨 Call' : '看跌 Put'}</option>)}</select>
-          <div className="options-primary"><strong>{percent(selected?.iv)}</strong><span>IV · 中间价收盘 {fmt(selected?.midpoint)} 点</span></div>
-          <dl className="options-greeks"><div><dt>Delta</dt><dd>{fmt(selected?.delta, 4)}</dd></div><div><dt>Gamma</dt><dd>{fmt(selected?.gamma, 6)}</dd></div><div><dt>Vega / 1%</dt><dd>{fmt(selected?.vega, 4)}</dd></div><div><dt>Theta / 日</dt><dd>{fmt(selected?.theta, 4)}</dd></div></dl>
-          <p>当前买卖报价未取得；缺失值以「—」显示。</p>
-        </section>
-        <section className="options-card"><header><h2><span>02</span>波动率偏斜 Skew</h2><b className="options-tag">三个点</b></header>
-          <Curve label={`${expiryText(activeExpiry)} 虚值期权 IV 偏斜样本`} points={data.skew.filter(r => r.expiry === activeExpiry).map(r => ({ x: r.strike, y: r.iv == null ? null : r.iv * 100, label: `${r.strike}` }))}/>
-          <p>{expiryText(activeExpiry)} · 取虚值 Put / Call；横轴为执行价。</p>
-        </section>
-        <section className="options-card"><header><h2><span>03</span>IV 期限结构</h2><b className="options-tag">三个到期日</b></header>
-          <Curve label="固定执行价 7700 的 IV 期限结构样本" points={data.term.map(r => ({ x: expiryTime(r.expiry), y: r.iv == null ? null : r.iv * 100, label: expiryAxis(r.expiry) }))} color="#6ed6be"/>
-          <p>固定执行价 7700；横轴为到期日，未做恒定 Delta 插值。</p>
-        </section>
-        <section className="options-card"><header><h2><span>04</span>VIX 期货期限结构</h2><b className="options-tag">VX 历史成交</b></header>
-          <Curve label="独立 VX 期货三个到期日的历史成交收盘价" points={data.vx.map(r => ({ x: expiryTime(r.expiry), y: r.price, label: expiryAxis(r.expiry) }))} unit="" color="#e3b776"/>
-          <p>独立的 VX 期货数据 · 与所选 ES 样本时段对齐。</p>
-        </section>
-        <section className="options-card options-unavailable"><header><h2><span>05</span>OI 分布、持仓 Put/Call</h2><b className="options-tag missing">未取得</b></header>
-          <div className="options-primary"><strong>—</strong><span>本次样本没有 OI</span></div><p className="options-explanation">CME 每日日报的导入尚未接入。需要有效的 OI 日期与完整合约范围，才能计算分布和持仓比。</p><p>这是日级持仓数据，半小时刷新不会使它变为实时 OI。</p>
-        </section>
-        <section className="options-card"><header><h2><span>06</span>成交量、成交量 Put/Call</h2><b className="options-tag missing">仅单合约</b></header>
-          <div className="options-primary"><strong>{fmt(selected?.volume, 0)} <small>手</small></strong><span>{selected?.name} · 所选半小时成交量</span></div><p className="options-explanation">该时段 {data.trade_contracts}/{data.expected_contracts} 个样本合约有成交量。全 ES 当日累计量和 Put/Call 比尚未取得。</p><p>跟随 01 的合约选择；未返回的成交柱不补为 0。</p>
-        </section>
-      </div>
-      <details className="options-details"><summary>查看合约明细 <span>{rows.length} 个合约 · {expiryText(activeExpiry)}</span></summary><div className="options-table-wrap"><table><caption>所选时段的历史中间价与本地模型试算；「—」表示缺失。</caption><thead><tr>{['合约', '历史中间价', 'IV', 'Delta', 'Gamma', 'Vega / 1%', 'Theta / 日', '半小时量'].map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>{rows.map(row => <tr key={row.id}><th scope="row">{row.name}</th><td>{fmt(row.midpoint)}</td><td>{percent(row.iv)}</td><td>{fmt(row.delta, 4)}</td><td>{fmt(row.gamma, 6)}</td><td>{fmt(row.vega, 4)}</td><td>{fmt(row.theta, 4)}</td><td>{fmt(row.volume, 0)}</td></tr>)}</tbody></table></div></details>
-      <div className="options-method"><strong>试算口径</strong><p>IBKR 历史 30 分钟柱 · Black-76 · 年化利率暂设 {percent(data.interest_rate)}，未接入实际利率。Greeks 按期权价格点计，未乘 50 的合约乘数。样本对应 {data.underlying}，期货中间价收盘 {fmt(data.underlying_price)} 点。同一柱时段不保证最后报价完全同步。</p><span>本次取数完成：{chinaTime(data.collected_at)}（北京时间）。重读页面只读取本地文件，不会产生新的市场数据。</span></div>
+      <details className="options-details"><summary>合约明细 <span>{dateText(active)} · {rows.length} 个合约</span></summary><div className="options-table-wrap"><table><caption>参考价及 Greeks 以点计；「—」表示暂缺。</caption><thead><tr>{['合约','中间价','IV','Delta','Gamma','OI','半小时量'].map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{rows.map(r=><tr key={r.id}><th scope="row">{r.name}</th><td>{fmt(r.midpoint)}</td><td>{pct(r.iv)}</td><td>{fmt(r.delta,4)}</td><td>{fmt(r.gamma,6)}</td><td>{fmt(r.oi,0)}</td><td>{fmt(r.volume,0)}</td></tr>)}</tbody></table></div></details>
+      <details className="options-method"><summary>数据与计算口径</summary><p>行情：IBKR 延迟行情的 30 分钟柱，每半小时检查一次；OI：<a href="https://www.cmegroup.com/market-data/daily-bulletin.html" target="_blank" rel="noreferrer">CME 每日持仓报告</a>。当前覆盖 {data.expiries.length} 个到期日、{data.expected_contracts} 个合约，IV 有效 {data.priced_contracts} 个，不代表全部 {target} 期权。</p><p>Black-76 · 欧式期货期权 · 年化利率采用 SOFR {pct(data.rate.rate)}（{data.rate.date}），按平坦利率估算。Gamma 敞口 = Gamma × OI × {data.multiplier??(target==='NQ'?20:50)} × 期货价格² × 1%；Put 按负号计。OI 每日公布，行情更新不会产生新的盘中 OI。</p><p>本机运行且联网时自动采集，休眠后恢复更新；保存最近 10 天。最近取数完成 {time(data.collected_at)}。市场休市时保留最近交易时段。</p></details>
     </>}
   </main>;
 }

@@ -20,7 +20,7 @@ from pathlib import Path
 from threading import RLock
 from typing import Any, Iterable
 
-LOGGER = logging.getLogger("tide.intel.store")
+LOGGER = logging.getLogger("limen.intel.store")
 
 DEFAULT_CAP_BYTES = 2 * 1024 ** 3
 

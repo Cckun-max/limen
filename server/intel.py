@@ -35,7 +35,7 @@ from .hyperliquid_info import HyperliquidError, HyperliquidInfo
 from .intel_store import DEFAULT_CAP_BYTES, IntelStore, QuotaExceeded
 from .liqflow import LiqFlowClient, LiqFlowError, parse_snapshot_time
 
-LOGGER = logging.getLogger("tide.intel")
+LOGGER = logging.getLogger("limen.intel")
 router = APIRouter(prefix="/api/v1/intel", tags=["intel"])
 
 MONTHLY_LIMIT = 50_000
@@ -174,10 +174,12 @@ class IntelService:
                  client: LiqFlowClient | None = None, hl_client: HyperliquidInfo | None = None):
         self.data_dir = Path(data_dir)
         self.live = live
-        self.monthly_limit = int(limit or os.environ.get("TIDE_INTEL_MONTHLY_LIMIT") or MONTHLY_LIMIT)
-        self.hard_cap = int(hard_cap or os.environ.get("TIDE_INTEL_HARD_CAP") or HARD_CAP)
-        self.cap_bytes = int(cap_bytes or os.environ.get("TIDE_INTEL_CAP_BYTES")
-                             or DEFAULT_CAP_BYTES)
+        self.monthly_limit = int(limit or os.environ.get("LIMEN_INTEL_MONTHLY_LIMIT")
+                                 or os.environ.get("TIDE_INTEL_MONTHLY_LIMIT") or MONTHLY_LIMIT)
+        self.hard_cap = int(hard_cap or os.environ.get("LIMEN_INTEL_HARD_CAP")
+                            or os.environ.get("TIDE_INTEL_HARD_CAP") or HARD_CAP)
+        self.cap_bytes = int(cap_bytes or os.environ.get("LIMEN_INTEL_CAP_BYTES")
+                             or os.environ.get("TIDE_INTEL_CAP_BYTES") or DEFAULT_CAP_BYTES)
         self.store = IntelStore(self.data_dir, cap_bytes=self.cap_bytes)
         self.config = load_key_config(self.data_dir)
         if api_key:
@@ -220,7 +222,7 @@ class IntelService:
             return
         self._stop.clear()
         self._next_due = {"levels": 0.0, "stats": 0.0, "positions": 0.0, "fills": 0.0}
-        self._task = asyncio.create_task(self._run(), name="tide-intel")
+        self._task = asyncio.create_task(self._run(), name="limen-intel")
 
     async def stop(self) -> None:
         self._stop.set()

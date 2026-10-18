@@ -19,4 +19,4 @@
 
 ## 兼容既有数据
 
-应用对外名称统一为 LIMEN。已有 `tide/` 源码目录、`Application Support/tide` 数据目录、旧版迁移路径、浏览器存储键、请求头和环境变量保留，以继续读取原有自选、历史行情与模型配置。
+应用对外名称、源码目录与数据目录统一为 LIMEN / `limen`。旧数据目录 `tide`（更早 `LocalMarket`）在服务首次启动时自动迁移为 `Application Support/limen`；情报日志名为 `limen.intel`，环境变量 `TIDE_INTEL_*` 仍作为回退读取。浏览器存储键、`X-Local-Market` 请求头等旧标识保留，以继续读取原有自选、历史行情与模型配置。

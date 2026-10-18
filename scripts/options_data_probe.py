@@ -3,7 +3,7 @@
 
 Uses a separate client connection and never sends paid regulatory snapshots.
 The output is evidence of field availability, not a trading signal or full chain.
-Run with the existing tide virtual environment; --target SPX or ES.
+Run with the existing limen virtual environment; --target SPX or ES.
 """
 import argparse
 import asyncio

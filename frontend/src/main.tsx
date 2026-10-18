@@ -1,5 +1,6 @@
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { createChartSync } from './chartSync';
 import { MarketChart } from './Chart';
 import { TimeframePicker } from './TimeframePicker';
 import { AnalysisPanel } from './AnalysisPanel';
@@ -12,6 +13,7 @@ import { instrumentDescription } from './instrumentNames';
 import { IntelPanel } from './IntelPanel';
 import { OptionsPage } from './OptionsPage';
 import { ExamsPage } from './Exams';
+import { ResearchWorkspace } from './ResearchWorkspace';
 import './style.css';
 import './terminal.css';
 import './intel.css';
@@ -19,8 +21,9 @@ import './marketPage.css';
 
 const QUALITY: Record<string, string> = { warming: '预热中', stale: '数据过期', gap: '正在补齐缺口', recovering: '恢复校验中', pending: '等待收盘确认', fresh: '数据完整', delayed:'延迟行情', closed:'休市 · 最近交易时段数据' };
 
-type PageRoute = 'markets' | 'watch' | 'trade' | 'options' | 'exams';
+type PageRoute = 'markets' | 'watch' | 'trade' | 'options' | 'exams' | 'research';
 function readRoute(): PageRoute {
+  if (location.hash === '#/research') return 'research';
   if (location.hash === '#/exams') return 'exams';
   if (location.hash === '#/options') return 'options';
   return location.hash === '#/markets/watch' ? 'watch' : location.hash === '#/markets' ? 'markets' : 'trade';
@@ -33,6 +36,7 @@ function App() {
   const marketOpen = route === 'markets' || route === 'watch';
   const optionsOpen = route === 'options';
   const examsOpen = route === 'exams';
+  const researchOpen = route === 'research';
   function navigate(next: PageRoute) {
     location.hash = next === 'watch' ? '/markets/watch' : `/${next}`;
     setRoute(next);
@@ -44,9 +48,9 @@ function App() {
     return () => window.removeEventListener('hashchange', onRoute);
   }, []);
   useEffect(() => {
-    document.title = examsOpen ? '模拟考试 · LIMEN' : optionsOpen ? 'ES 期权 · LIMEN' : marketOpen ? '市场 · LIMEN' : '交易 · LIMEN';
+    document.title = researchOpen ? '回测研究 · LIMEN' : examsOpen ? '模拟考试 · LIMEN' : optionsOpen ? 'ES / NQ 期权 · LIMEN' : marketOpen ? '市场 · LIMEN' : '交易 · LIMEN';
     window.scrollTo(0, 0);
-  }, [marketOpen, optionsOpen, examsOpen]);
+  }, [marketOpen, optionsOpen, examsOpen, researchOpen]);
   const markets = useMarkets();
   function chooseSymbol(next: string) {
     navigate('trade');
@@ -76,6 +80,7 @@ function App() {
   const [settingsRequest, setSettingsRequest] = useState(0);
   function openSettings() { navigate('trade'); setAiOpen(true); setSettingsRequest(n=>n+1); }
   const [lowerTab, setLowerTab] = useState('market');
+  const tradeOpen = route === 'trade';
 
   function chooseTimeframe(next: Timeframe) {
     // Persist the user's selection immediately, not on every live candle update.
@@ -84,7 +89,7 @@ function App() {
   }
 
   useEffect(() => {
-    if (examsOpen) return;
+    if (!tradeOpen) return;
     const abort = new AbortController();
     fetch(`/api/v1/overview?symbol=${encodeURIComponent(symbol)}`,  { signal: abort.signal }).then(r => {
       if (!r.ok) return r.json().then(v => { throw new Error(v.detail); }); return r.json();
@@ -99,19 +104,28 @@ function App() {
     events.onerror = () => setClientConnected(false);
     const timer = window.setInterval(() => setTime(Date.now()), 1000);
     return () => { abort.abort(); events.close(); clearInterval(timer); };
-  }, [symbol, examsOpen]);
+  }, [symbol, tradeOpen]);
+
+  const chartSync = useMemo(() => createChartSync({
+    load: (target, signal) => fetch(`/api/v1/chart/${target.timeframe}?symbol=${encodeURIComponent(target.symbol)}`, { signal }).then(r => {
+      if (!r.ok) return r.json().then(v => { throw new Error(v.detail); }); return r.json();
+    }) as Promise<ChartData>,
+    deliver: chart => { setError(''); setCharts(old => ({ ...old, [chart.timeframe]: chart })); },
+    fail: message => setError(message || '图表数据暂时不可用，请重新同步。'),
+  }), []);
+
+  useEffect(() => {
+    if (!tradeOpen) return;
+    setError('');
+    chartSync.select({ symbol, timeframe });
+    return () => chartSync.stop();
+  }, [symbol, timeframe, resetKey, tradeOpen, chartSync]);
 
   const revision = overview?.timeframes[timeframe]?.revision;
   useEffect(() => {
-    if (examsOpen) return;
-    const abort = new AbortController();
-    setError('');
-    fetch(`/api/v1/chart/${timeframe}?symbol=${encodeURIComponent(symbol)}`, { signal: abort.signal }).then(r => {
-      if (!r.ok) return r.json().then(v => { throw new Error(v.detail); }); return r.json();
-    }).then((chart: ChartData) => { if (!abort.signal.aborted && chart.symbol === symbol) setCharts(old => ({ ...old, [timeframe]: chart })); })
-      .catch(e => { if (e.name !== 'AbortError') setError(e.message || '图表数据暂时不可用，请重新同步。'); });
-    return () => abort.abort();
-  }, [symbol, timeframe, revision, resetKey, examsOpen]);
+    if (!tradeOpen || revision === undefined) return;
+    chartSync.refresh(revision);
+  }, [revision, tradeOpen, chartSync]);
 
   async function refresh() {
     setRefreshing(true);
@@ -144,18 +158,19 @@ function App() {
   const overviewTimeframes = Array.from(new Set<Timeframe>([timeframe, '15m', '1h', '4h']));
   const stale = !connected || overview?.quote_stale;
 
-  return <div className={`app terminal ${examsOpen ? 'exams-view' : optionsOpen ? 'options-view' : marketOpen ? 'market-view' : 'trade-view'}`}>
+  return <div className={`app terminal ${researchOpen ? 'research-view' : examsOpen ? 'exams-view' : optionsOpen ? 'options-view' : marketOpen ? 'market-view' : 'trade-view'}`}>
     <header className="terminal-header">
       <a className="terminal-brand" href="/" aria-label="LIMEN 首页"><img className="terminal-wordmark" src="/assets/limen-wordmark.svg" alt="LIMEN" width={140} height={35}/></a>
-      <nav aria-label="主导航"><a href="#/markets" className={marketOpen ? 'active' : ''} aria-current={marketOpen ? 'page' : undefined}>市场</a><a href="#/trade" className={route === 'trade' ? 'active' : ''} aria-current={route === 'trade' ? 'page' : undefined}>交易</a><a href="#/options" className={optionsOpen ? 'active' : ''} aria-current={optionsOpen ? 'page' : undefined}>期权</a><a href="#/exams" className={examsOpen ? 'active' : ''} aria-current={examsOpen ? 'page' : undefined}>模拟考试</a><button onClick={() => { navigate('trade'); setAiOpen(true); }}>AI 看盘</button></nav>
-      {examsOpen ? <span className="options-header-tag">独立账户 · 策略模拟</span> : optionsOpen ? <span className="options-header-tag">ES · 历史期权样本</span> : <><button className="symbol-search" onClick={openMarketSearch} aria-label="搜索与切换品种"><Search size={16}/><span>{marketOpen ? '搜索代码或名称' : `${displaySymbol} / ${currency}`}</span><span className="search-source">搜索品种</span></button>
+      <nav aria-label="主导航"><a href="#/markets" className={marketOpen ? 'active' : ''} aria-current={marketOpen ? 'page' : undefined}>市场</a><a href="#/trade" className={route === 'trade' ? 'active' : ''} aria-current={route === 'trade' ? 'page' : undefined}>交易</a><a href="#/options" className={optionsOpen ? 'active' : ''} aria-current={optionsOpen ? 'page' : undefined}>期权</a><a href="#/exams" className={examsOpen ? 'active' : ''} aria-current={examsOpen ? 'page' : undefined}>模拟考试</a><a href="#/research" className={researchOpen ? 'active' : ''} aria-current={researchOpen ? 'page' : undefined}>回测</a><button onClick={() => { navigate('trade'); setAiOpen(true); }}>AI 看盘</button></nav>
+      {researchOpen ? <span className="options-header-tag">回测研究 · 独立执行</span> : examsOpen ? <span className="options-header-tag">独立账户 · 策略模拟</span> : optionsOpen ? <span className="options-header-tag">ES / NQ · 期权与波动率</span> : <><button className="symbol-search" onClick={openMarketSearch} aria-label="搜索与切换品种"><Search size={16}/><span>{marketOpen ? '搜索代码或名称' : `${displaySymbol} / ${currency}`}</span><span className="search-source">搜索品种</span></button>
       <div className="terminal-account"><span className={`connection ${marketOpen ? markets.catalog?.stale || markets.error ? 'offline' : 'live' : mode}`}><i/>{marketOpen ? markets.error ? '连接中断' : !markets.catalog ? '正在连接' : markets.catalog.stale ? '缓存行情' : '行情已连接' : modeLabel}</span><button onClick={marketOpen ? markets.reload : refresh} disabled={!marketOpen && (refreshing || overview?.syncing)} title="重新同步行情"><RefreshCw size={17}/></button><button onClick={openSettings} title="AI 模型配置"><Settings2 size={18}/></button></div></>}
     </header>
-    <div className="watch-strip" hidden={marketOpen || optionsOpen || examsOpen}><button className="watch-manage" onClick={() => navigate('watch')}><Star size={16}/>自选</button><span className="strip-divider"/>{watchSymbols.map(s => { const item = markets.catalog?.items.find(m => m.symbol === s); return <button className={`watch-chip ${s === symbol ? 'selected' : ''}`} key={s} disabled={!item || item.delisted} onClick={() => chooseSymbol(s)}>{item?.display_symbol??s}<b>{price(item?.mark)}</b><span className={(item?.change_pct ?? 0) >= 0 ? 'positive' : 'negative'}>{item?.change_pct == null ? '—' : `${item.change_pct > 0 ? '+' : ''}${item.change_pct.toFixed(2)}%`}</span></button>; })}{!watchSymbols.length && <span className="watch-empty">点击币种旁的星标，添加你的第一个自选</span>}{markets.catalog?.stale && <span className="amber">缓存行情</span>}{markets.error && <span className="watch-error" role="status">{markets.error}</span>}</div>
+    <div className="watch-strip" hidden={marketOpen || optionsOpen || examsOpen || researchOpen}><button className="watch-manage" onClick={() => navigate('watch')}><Star size={16}/>自选</button><span className="strip-divider"/>{watchSymbols.map(s => { const item = markets.catalog?.items.find(m => m.symbol === s); return <button className={`watch-chip ${s === symbol ? 'selected' : ''}`} key={s} disabled={!item || item.delisted} onClick={() => chooseSymbol(s)}>{item?.display_symbol??s}<b>{price(item?.mark)}</b><span className={(item?.change_pct ?? 0) >= 0 ? 'positive' : 'negative'}>{item?.change_pct == null ? '—' : `${item.change_pct > 0 ? '+' : ''}${item.change_pct.toFixed(2)}%`}</span></button>; })}{!watchSymbols.length && <span className="watch-empty">点击币种旁的星标，添加你的第一个自选</span>}{markets.catalog?.stale && <span className="amber">缓存行情</span>}{markets.error && <span className="watch-error" role="status">{markets.error}</span>}</div>
     <MarketsPage state={markets} symbol={symbol} active={marketOpen} tab={route === 'watch' ? 'watch' : 'all'} onTabChange={tab => navigate(tab === 'watch' ? 'watch' : 'markets')} searchRequest={searchRequest} onChoose={chooseSymbol}/>
     {optionsOpen && <OptionsPage/>}
     {examsOpen && <ExamsPage/>}
-    <main className="terminal-main" hidden={marketOpen || optionsOpen || examsOpen}>
+    {researchOpen && <ResearchWorkspace/>}
+    <main className="terminal-main" hidden={marketOpen || optionsOpen || examsOpen || researchOpen}>
       <div className="market-column">
         <section className={`quote-strip ${stale?'stale':''}`} aria-label={`${displaySymbol} 行情概览`}>
           <div className="quote-symbol"><button className="quote-star" aria-label={`${starred ? '移出' : '加入'}默认自选`} aria-pressed={starred} disabled={markets.busy || !defaultGroup} onClick={() => void markets.mutate(`/default/items/${encodeURIComponent(symbol)}`, starred ? 'DELETE' : 'PUT')}><Star size={19}/></button><span className="coin">{symbol === 'BTC' ? '₿' : displaySymbol.slice(0, 2)}</span><button className="symbol-switch" onClick={openMarketSearch}><strong>{displaySymbol}{isIB?'':'/USDC'} ⌄</strong><small>{[description, isIB?(instrument?.asset_type==='future'?`${instrument.exchange} 期货`:'美股 / ETF'):'永续'].filter(Boolean).join(' · ')}</small></button></div>
@@ -163,13 +178,13 @@ function App() {
           <div><small>{isIB?`当日成交量 · ${instrument?.volume_unit??'—'}`:'成交额 · 24h USD'}</small><strong>{compact(isIB?quote?.volume:quote?.volume_usd)}</strong></div>
           <div><small>{isIB?'交易时段':`持仓量 · ${symbol}`}</small><strong>{isIB?instrument?.session??'等待品种信息':compact(quote?.oi_base)}</strong></div>
           <div><small>{isIB?'K 线时效':'资金费 · 1h'}</small><strong className={isIB?'amber':(quote?.funding??0)>=0?'positive':'negative'}>{isIB?(overview?.history_delay_minutes?`延迟 ≥ ${overview.history_delay_minutes} 分钟`:'实时权限模式'):quote?.funding==null?'—':`${(quote.funding*100).toFixed(4)}%`}</strong></div>
-          {isIB && (instrument?.native_symbol === 'ES' || /^ES[HMUZ]\d+$/.test(displaySymbol)) && <a className="options-entry" href="#/options">查看 ES 期权 →</a>}
+          {isIB && (['ES','NQ'].includes(instrument?.native_symbol||'') || /^(ES|NQ)[HMUZ]\d+$/.test(displaySymbol)) && <a className="options-entry" href="#/options" onClick={()=>{try{localStorage.setItem('options-target',instrument?.native_symbol==='NQ'||displaySymbol.startsWith('NQ')?'NQ':'ES');}catch{/* Navigation remains available. */}}}>查看 {instrument?.native_symbol==='NQ'||displaySymbol.startsWith('NQ')?'NQ':'ES'} 期权 →</a>}
         </section>
         {(error || (overview && !connected) || quality?.status === 'stale' || quality?.status === 'gap') && <div className="notice" role="status">{error || (!connected ? '本地连接中断，正在恢复。当前为缓存行情。' : quality?.status === 'gap' ? '行情存在缺口，正在补齐。' : '行情已过期，正在重新同步。')}</div>}
         <section className="chart-card" id="chart" aria-label="多周期图表">
           <div className="terminal-toolbar"><button className="chart-symbol" onClick={openMarketSearch}><Search size={16}/> {displaySymbol}</button><TimeframePicker value={timeframe} onChange={chooseTimeframe}/><SlidersHorizontal size={16}/><div className="indicator-toggles">{(['ema20','ema60','rsi','macd'] as const).map(key=><label key={key} className={`toggle ${key}`}><input type="checkbox" checked={visible[key]} onChange={()=>setVisible(v=>({...v,[key]:!v[key]}))}/><span>{({ema20:'EMA 20',ema60:'EMA 60',rsi:'RSI',macd:'MACD'})[key]}</span></label>)}</div><button className="icon-button" aria-label="重置图表视野" onClick={()=>setResetKey(k=>k+1)}><Maximize size={17}/></button></div>
           <div className="chart-caption">{displaySymbol} · {LABELS[timeframe]} · {sourceName}{instrument?.expiry?` · 到期 ${instrument.expiry}`:''}</div>
-          {!marketOpen && !optionsOpen && !examsOpen && <MarketChart key={symbol} symbol={displaySymbol} data={chart} timeframe={timeframe} visible={visible} resetKey={resetKey}/>}
+          {!marketOpen && !optionsOpen && !examsOpen && !researchOpen && <MarketChart key={symbol} symbol={displaySymbol} data={chart} timeframe={timeframe} visible={visible} resetKey={resetKey}/>}
           <div className="chart-bottom"><div className="quick-periods">{(['1m','5m','15m','1h','4h','1d','1w'] as Timeframe[]).map(tf=><button key={tf} className={tf===timeframe?'active':''} onClick={()=>chooseTimeframe(tf)}>{tf}</button>)}</div><span>{isIB?(lastBar?.status==='forming'?'尚未收盘':'最近确认柱'):lastBar?.status==='forming'?`形成中 ${timer}`:'已收盘'} · {clock(time)}</span></div>
         </section>
         <section id="market-data" className="market-data"><div className="panel-tabs"><button className={lowerTab==='market'?'active':''} onClick={()=>setLowerTab('market')}>市场数据</button><button className={lowerTab==='status'?'active':''} onClick={()=>setLowerTab('status')}>数据状态</button><button className={lowerTab==='intel'?'active':''} onClick={()=>setLowerTab('intel')}>市场情报</button></div>
@@ -182,7 +197,7 @@ function App() {
         <div className="ai-workbench" hidden={!aiOpen}><AnalysisPanel symbol={symbol} displaySymbol={displaySymbol} timeframe={timeframe} settingsRequest={settingsRequest}/></div>
       </section>
     </main>
-    <footer className="terminal-footer"><span><i/>{examsOpen ? '模拟考试 · 后台服务运行时持续执行' : optionsOpen ? '期权 · 本地历史样本 · 尚未开启盘中自动采集' : marketOpen ? '市场 · Hyperliquid / IBKR' : `${modeLabel} · ${sourceName}`}</span><span>TradingView Lightweight Charts™ · <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">TradingView, Inc.</a></span></footer>
+    <footer className="terminal-footer"><span><i/>{researchOpen ? '回测研究 · 项目历史缓存' : examsOpen ? '模拟考试 · 后台服务运行时持续执行' : optionsOpen ? '期权 · IBKR / CME · 每 30 分钟更新' : marketOpen ? '市场 · Hyperliquid / IBKR' : `${modeLabel} · ${sourceName}`}</span><span>TradingView Lightweight Charts™ · <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">TradingView, Inc.</a></span></footer>
   </div>;
 }
 
