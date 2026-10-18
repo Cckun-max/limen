@@ -75,7 +75,6 @@ class Broker:
         self.ib.errorEvent += self._on_error
         self.task = None
         self.lock = asyncio.Lock()
-        self.config_lock = asyncio.Lock()
         self.feeds = {}
         self.generation = 0
         self.connecting = False
@@ -107,8 +106,7 @@ class Broker:
             # feed; they must not become global connection errors for every symbol.
 
     def public(self):
-        return {"config": self.config.model_dump(), "connected": self.connected,
-                "connecting": self.connecting, "error": self.error, "host": "127.0.0.1",
+        return {"connected": self.connected, "connecting": self.connecting,
                 "read_only": True, "last_check": self.last_check or None,
                 "history_delay_minutes": 15 if self.config.delayed else 0,
                 "instruments": self.rows()}
@@ -141,17 +139,6 @@ class Broker:
         self.upstream = False
         self.connecting = False
 
-    async def configure(self, config):
-        async with self.config_lock:
-            await self.stop()
-            self.config = config
-            self.store.put("ibkr:settings", config.model_dump())
-            self.error = None
-            for feed in list(self.feeds.values()):
-                await feed.reset()
-            await self.start()
-        return self.public()
-
     async def _loop(self):
         while True:
             try:
@@ -181,7 +168,7 @@ class Broker:
 
     def require(self):
         if not self.connected:
-            raise HTTPException(503, "请先连接已登录的 TWS / IB Gateway")
+            raise HTTPException(503, "行情暂不可用，请稍后重试")
 
     async def discover(self, query):
         """Search the broker's catalog without subscribing to market data."""
@@ -198,7 +185,7 @@ class Broker:
                 if matches is None:
                     raise TimeoutError()
             except Exception:
-                raise HTTPException(502, "盈透品种查询暂未完成，请稍后重试")
+                raise HTTPException(502, "品种查询暂未完成，请稍后重试")
         result = {}
         for match in matches:
             c = match.contract
@@ -224,7 +211,7 @@ class Broker:
                 try:
                     details = await asyncio.wait_for(self.ib.reqContractDetailsAsync(contract), 12)
                 except Exception:
-                    raise HTTPException(502, "合约确认失败，请检查盈透连接后重试")
+                    raise HTTPException(502, "合约确认失败，请稍后重试")
             valid = [d for d in details if d.contract.conId == con_id
                      and d.contract.primaryExchange in US_STOCK_EXCHANGES]
             self._remember_details(valid, "STK")
@@ -244,7 +231,7 @@ class Broker:
             try:
                 details = await asyncio.wait_for(self.ib.reqContractDetailsAsync(contract), 12)
             except Exception:
-                raise HTTPException(502, "查询失败，请检查代码和 IBKR 连接状态")
+                raise HTTPException(502, "查询失败，请检查代码后重试")
             await asyncio.sleep(.6)
         return self._remember_details(details, kind)
 
@@ -401,7 +388,7 @@ class IBMarket:
         return {"instrument_id":self.symbol,"symbol":self.symbol,"instrument":self.item,"quote":self.quote,
                 "quote_stale":bool(quote_stale),"transport":"polling" if self.broker.connected else "offline",
                 "ws_connected":False,"last_ws":None,"syncing":self.syncing,"reconnects":0,
-                "timeframes":summaries,"errors":{**self.errors, **({"connection":self.broker.error} if self.broker.error else {})},
+                "timeframes":summaries,"errors":{**self.errors, **({"connection":"行情暂不可用，请稍后重试"} if self.broker.error else {})},
                 "server_time":now_ms(),"algorithm_version":VERSION+":ibkr-sessions-v1",
                 "data_cutoff":self.cutoff(),"history_delay_minutes":15 if self.broker.config.delayed else 0}
 
@@ -531,11 +518,6 @@ router = APIRouter(prefix="/api/v1/ibkr")
 @router.get("/status")
 async def status(request: Request):
     return request.app.state.hub.broker.public()
-
-
-@router.put("/config",dependencies=[Depends(local_write)])
-async def config(body:ConnectionSettings,request:Request):
-    return await request.app.state.hub.broker.configure(body)
 
 
 @router.get("/search")

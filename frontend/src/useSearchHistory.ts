@@ -26,7 +26,7 @@ export function useSearchHistory(query: string) {
   const cancelPending = useCallback(() => { clearTimeout(pending.current); }, []);
   const save = useCallback((next: string[]) => {
     latest.current = next;
-    // Persist before opening a result unmounts the market dialog.
+    // Persist before opening a result leaves the market page.
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); }
     catch { /* Search stays usable when browser storage is unavailable. */ }
     setItems(next);

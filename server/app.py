@@ -18,6 +18,10 @@ from .storage import Store
 from .ai import AnalysisService
 from .ai_routes import router as ai_router
 from .ibkr import router as ibkr_router
+from .intel import IntelService, router as intel_router
+from .options_sample import router as options_router
+from .exams import router as exams_router
+from .exam_runtime import ExamService
 
 
 def default_data_dir():
@@ -38,20 +42,29 @@ def create_app(data_dir: Path | None = None, *, live: bool = True):
         app.state.market = app.state.hub.feeds["BTC"]
         app.state.watchlists = Watchlists(store)
         app.state.ai = AnalysisService(app.state.market, folder)
+        app.state.intel = IntelService(folder, live=live)
+        app.state.exams = ExamService(store, app.state.hub)
         if live:
             await app.state.hub.start()
+            await app.state.intel.start()
+            await app.state.exams.start()
         try:
             yield
         finally:
+            await app.state.exams.stop()
+            await app.state.intel.stop()
             await app.state.ai.stop()
             await app.state.hub.stop()
             store.close()
 
-    app = FastAPI(title="tide", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(title="LIMEN", version="0.2.0", lifespan=lifespan)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
     app.include_router(ai_router)
     app.include_router(watchlist_router)
     app.include_router(ibkr_router)
+    app.include_router(intel_router)
+    app.include_router(options_router)
+    app.include_router(exams_router)
 
     @app.get("/api/v1/markets")
     async def markets(request: Request):
@@ -66,7 +79,7 @@ def create_app(data_dir: Path | None = None, *, live: bool = True):
     @app.middleware("http")
     async def private_responses(request: Request, call_next):
         response = await call_next(request)
-        if request.url.path.startswith("/api/v1/ai"):
+        if request.url.path.startswith(("/api/v1/ai", "/api/v1/intel", "/api/v1/exams")):
             response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -83,7 +96,7 @@ def create_app(data_dir: Path | None = None, *, live: bool = True):
     @app.get("/api/v1/health")
     async def health(request: Request, symbol: str = "BTC"):
         result = (await request.app.state.hub.get(symbol)).overview()
-        return {"service": "tide", **result}
+        return {"service": "limen", **result}
 
     @app.post("/api/v1/refresh", status_code=202)
     async def refresh(request: Request, symbol: str = "BTC"):

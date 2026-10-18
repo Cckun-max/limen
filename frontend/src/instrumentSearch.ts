@@ -1,19 +1,14 @@
-// These are search aliases, not a market catalog. Results still come from IBKR.
-const SEARCH_ALIASES: Record<string, string> = {
-  '英伟达': 'NVDA', '英偉達': 'NVDA', '辉达': 'NVDA', '輝達': 'NVDA',
-  '苹果': 'AAPL', '蘋果': 'AAPL', '微软': 'MSFT', '微軟': 'MSFT',
-  '特斯拉': 'TSLA', '亚马逊': 'AMZN', '亞馬遜': 'AMZN', '谷歌': 'GOOGL',
-  '微型黄金': 'MGC', '微型黄金期货': 'MGC', '微型黃金': 'MGC',
-};
+import { instrumentDescription, instrumentSearchAlias, type NamedInstrument } from './instrumentNames.ts';
 
 export function normalizeInstrumentSearch(query: string) {
-  const value = query.trim();
-  return SEARCH_ALIASES[value] ?? value.toUpperCase();
+  return instrumentSearchAlias(query);
 }
 
-export function instrumentMatches(row: {symbol: string; display_symbol?: string; name?: string}, query: string) {
-  const value = normalizeInstrumentSearch(query).replace(/\/(USDC|USD|USDT)$/, '');
-  return `${row.symbol} ${row.display_symbol ?? ''} ${row.name ?? ''}`.toUpperCase().includes(value);
+export function instrumentMatches(row: NamedInstrument, query: string) {
+  const text = `${row.symbol} ${row.display_symbol ?? ''} ${row.name ?? ''} ${instrumentDescription(row)}`.toUpperCase();
+  const values = [query.trim().toUpperCase(), normalizeInstrumentSearch(query)]
+    .map(value => value.toUpperCase().replace(/\/(USDC|USD|USDT)$/, ''));
+  return values.some(value => text.includes(value));
 }
 
 export function brokerSearchKind(query: string, assetType: string) {

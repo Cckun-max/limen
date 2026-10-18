@@ -1,1 +1,1 @@
-"""tide: independent, public-data-only market viewer."""
+"""LIMEN: independent, public-data-only market viewer."""

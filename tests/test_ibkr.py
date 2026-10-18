@@ -2,10 +2,16 @@
 import asyncio
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
 from types import SimpleNamespace as NS
 
 from fastapi.testclient import TestClient
 from ib_async import Stock, Ticker
+from pydantic import ValidationError
 import pytest
 
 from server.app import create_app
@@ -172,26 +178,134 @@ def test_history_request_cutoff_is_delayed_no_live_subscription_and_partial_fail
     store.close()
 
 
+def test_recent_listing_keeps_verified_schedule_when_older_page_has_no_data(tmp_path, monkeypatch):
+    from ib_async.wrapper import RequestError
+    monkeypatch.setattr('server.ibkr.now_ms', lambda: AT)
+    async def no_sleep(_): pass
+    monkeypatch.setattr('server.ibkr.asyncio.sleep', no_sleep)
+    store = Store(tmp_path / 'schedule.db')
+    broker = Broker(store)
+    market = IBMarket(store, broker, instrument(771759702))
+    calls = []
+    async def schedule(contract, days, end, useRTH):
+        calls.append((days, end, useRTH))
+        if len(calls) == 3:
+            raise RequestError(28, 162, r'\u5386\u53f2\u5e02\u573a\u6570\u636e\u67e5\u8be2\u672a\u8fd4\u56de\u6570\u636e:CRWV@SMART Schedule')
+        date = '20261016' if len(calls) == 1 else '20251016'
+        start, end_time = f'{date}-09:30:00', f'{date}-16:00:00'
+        return NS(timeZone='America/New_York', startDateTime=start, endDateTime=end_time,
+                  sessions=[NS(refDate=date, startDateTime=start, endDateTime=end_time)])
+    broker.ib = NS(reqHistoricalScheduleAsync=schedule)
+    asyncio.run(market._schedule())
+    assert len(calls) == 3 and all(days == 365 and useRTH for days, _, useRTH in calls)
+    assert len(market.sessions.rows) == 2
+    assert store.get(f'sessions:{market.symbol}')['rows'] == market.session_payload['rows']
+    assert market.session_payload['start'] < market.session_payload['end']
+    store.close()
+
+
+def test_schedule_no_data_is_not_confused_with_missing_permissions(tmp_path, monkeypatch):
+    from ib_async.wrapper import RequestError
+    monkeypatch.setattr('server.ibkr.now_ms', lambda: AT)
+    async def no_sleep(_): pass
+    monkeypatch.setattr('server.ibkr.asyncio.sleep', no_sleep)
+    store = Store(tmp_path / 'schedule-errors.db')
+    broker = Broker(store)
+    market = IBMarket(store, broker, instrument())
+    async def denied(*_args, **_kwargs):
+        raise RequestError(3, 162, 'No market data permissions for NASDAQ STK')
+    broker.ib = NS(reqHistoricalScheduleAsync=denied, isConnected=lambda:False)
+    asyncio.run(market.reconcile())
+    assert 'No market data permissions' in market.errors['calendar']
+    assert market._quality('1h', [])['error'] == market.errors['calendar']
+    assert not market.session_payload
+    broker._on_error(3, 162, 'No market data permissions for NASDAQ STK')
+    assert broker.error is None  # A symbol request does not poison the connection.
+    broker._on_error(-1, 1100, 'connection lost')
+    assert broker.error
+    store.close()
+
+
 def test_routes_no_credentials_order_endpoints_and_watchlist_persistence(tmp_path):
     with TestClient(create_app(tmp_path,live=False)) as c:
         status=c.get('/api/v1/ibkr/status').json()
-        assert status['config']['enabled'] is False and status['read_only']
-        assert c.put('/api/v1/ibkr/config',json={}).status_code==403
+        assert not status['connected'] and status['read_only']
+        assert set(status)=={'connected','connecting','read_only','last_check','history_delay_minutes','instruments'}
+        assert c.put('/api/v1/ibkr/config',json={}).status_code==404
         headers={'X-Local-Market':'1'}
-        assert c.put('/api/v1/ibkr/config',headers=headers,json={'port':80}).status_code==422
-        assert c.put('/api/v1/ibkr/config',headers=headers,json={'host':'remote.example'}).status_code==422
-        assert c.put('/api/v1/ibkr/config',headers=headers,json={'password':'fixture'}).status_code==422
-        assert c.get('/api/v1/ibkr/search?q=AAPL').status_code==503
+        assert c.put('/api/v1/ibkr/config',headers=headers,json={'enabled':True,'port':4002}).status_code==404
+        assert c.get('/api/v1/ibkr/config').status_code==404
+        schema=c.get('/openapi.json').json()
+        assert '/api/v1/ibkr/config' not in schema['paths']
+        assert 'ConnectionSettings' not in schema['components']['schemas']
+        unavailable=c.get('/api/v1/ibkr/search?q=AAPL')
+        assert unavailable.status_code==503 and unavailable.json()['detail']=='行情暂不可用，请稍后重试'
         assert c.post('/api/v1/ibkr/instruments',headers=headers,json={'con_id':123}).status_code==422
         broker=c.app.state.hub.broker;broker.candidates[123]=instrument()
+        assert broker.store.get('ibkr:settings') is None
+        broker.error='TWS / IB Gateway: Socket API 127.0.0.1:7497 client_id=71'
         assert c.post('/api/v1/ibkr/instruments',headers=headers,json={'con_id':123}).status_code==200
         assert c.put('/api/v1/watchlists/default/items/ibkr:123',headers=headers).status_code==200
         assert c.get('/api/v1/chart/1h?symbol=ibkr:123').json()['instrument']['display_symbol']=='AAPL'
+        overview=c.get('/api/v1/overview?symbol=ibkr:123')
+        assert overview.json()['errors']['connection']=='行情暂不可用，请稍后重试'
+        assert not any(detail in overview.text for detail in ('TWS','Gateway','127.0.0.1','7497','client_id'))
+        assert 'error' not in c.get('/api/v1/ibkr/status').json()
         assert c.get('/api/v1/overview?symbol=BTC').status_code==200
         assert c.post('/api/v1/ibkr/orders',headers=headers,json={}).status_code==404
     with TestClient(create_app(tmp_path,live=False)) as c:
         assert c.get('/api/v1/ibkr/status').json()['instruments'][0]['symbol']=='ibkr:123'
         assert 'ibkr:123' in c.get('/api/v1/watchlists').json()[0]['symbols']
+
+
+@pytest.mark.parametrize('invalid', [
+    {'port':80}, {'port':65536}, {'client_id':0}, {'client_id':1000000},
+    {'host':'remote.example'}, {'password':'fixture'}, {'unknown':True},
+])
+def test_private_connection_settings_validation(invalid):
+    with pytest.raises(ValidationError):
+        ConnectionSettings.model_validate(invalid)
+
+
+def run_config_cli(tmp_path, *args):
+    return subprocess.run(
+        [sys.executable, str(Path(__file__).resolve().parents[1]/'scripts/configure_ibkr.py'), *args],
+        env={**os.environ,'MARKET_DATA_DIR':str(tmp_path)}, capture_output=True, text=True)
+
+
+def test_private_config_cli_read_only_and_preserves_unspecified_values(tmp_path):
+    data=tmp_path/'data'; path=data/'btc-hyperliquid.sqlite3'
+    initial=run_config_cli(data)
+    assert initial.returncode==0,initial.stderr
+    assert json.loads(initial.stdout)==ConnectionSettings().model_dump()
+    assert not data.exists()
+    changed=run_config_cli(data,'--port','4002','--client-id','83','--mode','live','--enable')
+    assert changed.returncode==0,changed.stderr
+    assert '重启' in changed.stderr
+    expected={'port':4002,'client_id':83,'delayed':False,'enabled':True}
+    assert json.loads(changed.stdout)==expected
+    assert path.stat().st_mode & 0o777==0o600
+    before=(path.read_bytes(),path.stat().st_mtime_ns)
+    inspected=run_config_cli(data)
+    assert inspected.returncode==0 and not inspected.stderr
+    assert json.loads(inspected.stdout)==expected
+    assert (path.read_bytes(),path.stat().st_mtime_ns)==before
+    disabled=run_config_cli(data,'--disable')
+    assert disabled.returncode==0,disabled.stderr
+    assert json.loads(disabled.stdout)=={**expected,'enabled':False}
+    store=Store(path)
+    assert Broker(store).config.model_dump()=={**expected,'enabled':False}
+    store.close()
+
+
+@pytest.mark.parametrize('args', [
+    ('--port','80'), ('--client-id','0'), ('--mode','invalid'), ('--enable','--disable'),
+])
+def test_private_config_cli_rejects_invalid_changes_without_creating_database(tmp_path,args):
+    data=tmp_path/'data'
+    result=run_config_cli(data,*args)
+    assert result.returncode==2
+    assert not data.exists()
 
 
 def test_live_to_delayed_cache_and_reconnection_do_not_appear_fresh(tmp_path,monkeypatch):

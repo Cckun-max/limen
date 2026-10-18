@@ -7,3 +7,9 @@
 .terminal .ohlc-row{min-height:24px}.terminal .indicator-readout{min-height:24px;padding:4px 12px}.terminal .chart-caption{padding-top:6px;font-size:13px}
 
 .book-stream-controls{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:12px 14px 5px;font-size:10px;flex-shrink:0}.book-stream-controls select{max-width:145px;background:#202024;border:1px solid #36323e;border-radius:5px;color:#bbb2ce;padding:5px;font-size:10px}.book-freshness{display:flex;justify-content:space-between;gap:4px;padding:3px 14px 8px;color:#777580;font-size:9px;font-variant-numeric:tabular-nums;flex-shrink:0}.book-size{animation:book-size-update .35s ease-out}.orderbook .book-body{overflow-y:auto;min-height:0;flex:1}.orderbook .ask-rows,.orderbook .bid-rows{flex-shrink:0}.orderbook .book-totals{gap:5px;flex-shrink:0}.orderbook .panel-tabs,.orderbook .book-labels,.orderbook .book-status{flex-shrink:0}@keyframes book-size-update{from{background:#d4c3ff38}to{background:transparent}}@media(prefers-reduced-motion:reduce){.book-size{animation:none}}
+
+/* Approved LIMEN wordmark: use the traced artwork so its candle-I stays intact. */
+.terminal-brand{flex-shrink:0;min-height:44px}
+.terminal-wordmark{display:block;width:140px;height:auto}
+@media(max-width:1150px){.terminal-wordmark{width:124px}}
+@media(max-width:620px){.terminal-wordmark{width:104px}}

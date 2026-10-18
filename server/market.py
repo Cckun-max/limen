@@ -43,7 +43,7 @@ class MarketService:
         self.history_loaded: set[str] = set()
 
     async def start(self):
-        self.http = httpx.AsyncClient(timeout=12, headers={"User-Agent": "tide/0.1"})
+        self.http = httpx.AsyncClient(timeout=12, headers={"User-Agent": "limen/0.1"})
         self.tasks = [asyncio.create_task(self._rest_loop()), asyncio.create_task(self._ws_loop())]
 
     async def stop(self):
