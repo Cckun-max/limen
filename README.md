@@ -1,10 +1,12 @@
 ![LIMEN](assets/limen-wordmark.svg)
 
-# LIMEN · 本地看盘
+# LIMEN · AI × 策略研究 × 量化 × 实时交易
 
-已实现：**Hyperliquid 原生永续多币种行情、搜索/筛选/排序、自选分组与本地保存、十周期 K 线、EMA20/60、RSI14、完整 MACD，以及 AI 看盘的输入快照、模型接口、分析展示、追问、本地记录与自定义看盘框架。** DeepSeek `deepseek-flash` 已接通；2026-10-17 完成真实框架分析、追问、版本隔离及页面验证。
+LIMEN 是自用的本地交易研究平台，围绕四条主线：**AI 看盘与自定义框架、策略研究（罗晟框架接入与结构化提案）、量化（quantlab 回测引擎）、实时交易（IBKR 方向）**。
 
-加密行情直接从 Hyperliquid 的公开接口获取，不依赖第三方行情平台，不需要交易账户或 API key。新增 **IBKR 美股 / ETF / CME 股指及 COMEX 微型黄金期货只读适配器**，代码与离线测试已完成，真实账户行情待联调；它需要另行登录官方 TWS 或 IB Gateway。React + Lightweight Charts 前端由 FastAPI 提供；后台只绑定 `127.0.0.1`。
+已实现：**Hyperliquid 原生永续多币种行情、搜索/筛选/排序、自选分组与本地保存、十周期 K 线、EMA20/60、RSI14、完整 MACD、订单簿，以及 AI 看盘的输入快照、模型接口、分析展示、追问、本地记录与自定义看盘框架**；回测研究页（`./research.sh`，8870 端口）与 quantlab 引擎、50K/100K/150K 模拟考试、LiqFlow 市场情报已可用。DeepSeek `deepseek-flash` 已接通；2026-10-17 完成真实框架分析、追问、版本隔离及页面验证。
+
+加密行情直接从 Hyperliquid 的公开接口获取，不依赖第三方行情平台，不需要交易账户或 API key。IBKR 美股 / ETF / CME 股指及 COMEX 微型黄金期货目前为**只读适配器**，真实账户行情待联调，需另行登录官方 TWS 或 IB Gateway；不接下单、持仓或账户查询。React + Lightweight Charts 前端由 FastAPI 提供；后台只绑定 `127.0.0.1`。
 
 ## 运行
 
@@ -17,7 +19,7 @@
 ./start.sh
 ```
 
-打开 [本地看盘页面](http://127.0.0.1:8765)。终端 `Ctrl+C` 停止；关网页不会停止后端，电脑休眠会停止更新。
+打开 [本地页面](http://127.0.0.1:8765)。终端 `Ctrl+C` 停止；关网页不会停止后端，电脑休眠会停止更新。
 
 用 `MARKET_PYTHON=/path/to/python3 ./setup.sh` 指定 Python，`MARKET_PORT=8766 ./start.sh` 修改端口。
 
