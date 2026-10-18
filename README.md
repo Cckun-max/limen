@@ -10,8 +10,6 @@ LIMEN 是自用的本地交易研究平台，围绕四条主线：**AI 看盘与
 
 ## 运行
 
-给朋友访问可先使用 [免费分享本机方案](share/README.md)：Tailscale Funnel 提供 HTTPS 网址，本机网关统一行情与回测入口并要求密码。需要本人登录 Tailscale、完成公网验收后才算上线；电脑需保持运行。另有 [Linux 服务器部署备用方案](deploy/README.md)，目前没有购买或部署服务器。
-
 需要 Python 3.11+、Node.js 22.12+（或 Vite 当前支持的更新版本）：
 
 ```bash
